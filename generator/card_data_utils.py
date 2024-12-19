@@ -2,7 +2,7 @@ import random
 import json
 import logging
 from typing import Dict, Any, List
-from models import Rarity
+from card_models import Rarity
 
 # Logging configuration
 logger = logging.getLogger(__name__)

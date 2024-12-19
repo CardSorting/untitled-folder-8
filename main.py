@@ -2,9 +2,12 @@ import os
 import logging
 import random
 from dotenv import load_dotenv
-from typing import Optional
+from typing import Optional, Dict
 import asyncio
 import re
+from datetime import datetime
+import json
+from jose import jwt
 
 from fastapi import FastAPI, Request, Form, HTTPException, Depends
 from fastapi.templating import Jinja2Templates
@@ -12,9 +15,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import create_engine, Column, Integer, String, JSON, DateTime
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-from datetime import datetime
-import json
+from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session
 
 # Load environment variables
 load_dotenv()
@@ -24,6 +26,8 @@ load_dotenv()
 from generator.card_generator import generate_card
 from generator.card_data_utils import validate_card_data, standardize_card_data
 from generator.image_utils import generate_card_image
+from models import Base
+from user_models import UserModel
 
 # Logging configuration
 logging.basicConfig(
@@ -34,7 +38,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Database setup
-Base = declarative_base()
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./card_generator.db')
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -78,6 +81,49 @@ async def get_template_context(request: Request):
         "clerk_publishable_key": os.getenv("CLERK_API_KEY")
     }
 
+# Dependency to get database session
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+async def get_current_user(request: Request, db: Session = Depends(get_db)):
+    """
+    Verify the Clerk JWT token and retrieve the current user.
+    """
+    authorization = request.headers.get("Authorization")
+    if not authorization:
+        return None
+
+    try:
+        token = authorization.split(" ")[1]
+        decoded_token = jwt.decode(
+            token,
+            os.getenv("CLERK_JWT_KEY"),
+            algorithms=["HS256"],
+            options={"verify_signature": False, "verify_aud": False, "verify_exp": False}
+        )
+        
+        user_id = decoded_token.get("sub")
+        email = decoded_token.get("email")
+        
+        if not user_id:
+            return None
+        
+        user = db.query(UserModel).filter(UserModel.clerk_id == user_id).first()
+        if not user:
+            user = UserModel(clerk_id=user_id, email=email)
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+        
+        return user
+    except Exception as e:
+        logger.error(f"Error decoding JWT token: {e}")
+        return None
+
 @app.get("/", response_class=HTMLResponse)
 async def read_root(request: Request, context: dict = Depends(get_template_context)):
     """Render the main page for card generation."""
@@ -90,7 +136,9 @@ async def auth(request: Request, context: dict = Depends(get_template_context)):
 
 @app.post("/generate-card")
 async def create_card(
-    request: Request
+    request: Request,
+    current_user: Optional[UserModel] = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """Generate a new card with optional rarity."""
     # Extremely verbose logging
@@ -183,7 +231,6 @@ async def create_card(
         logger.debug(f"Set details - Name: {set_name}, Number: {set_number}, Card Number: {card_number}")
         
         # Save to database
-        db = SessionLocal()
         try:
             logger.debug("Preparing to save card to database")
             db_card = CardModel(
@@ -195,6 +242,7 @@ async def create_card(
                 card_number=f"{set_number:03d}"
             )
             db.add(db_card)
+            
             db.commit()
             db.refresh(db_card)
             
@@ -223,8 +271,6 @@ async def create_card(
                 status_code=500, 
                 detail="Error saving card to database"
             )
-        finally:
-            db.close()
     
     except HTTPException as http_error:
         # Re-raise HTTPException to preserve status code and detail

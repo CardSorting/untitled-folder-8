@@ -9,7 +9,7 @@ from openai_config import openai_client
 from generator.card_data_utils import standardize_card_data, validate_card_data, get_rarity
 from generator.prompt_utils import generate_card_prompt, create_dalle_prompt
 from generator.image_utils import generate_card_image
-from models import Rarity
+from card_models import Rarity
 
 # Logging configuration
 logging.basicConfig(

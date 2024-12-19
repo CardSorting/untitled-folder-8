@@ -9,7 +9,6 @@
     <link rel="preload" href="/static/js/card-effects.js" as="script">
     <script src="/static/js/card-effects.js" defer></script>
     <script
-      async
       crossorigin="anonymous"
       data-clerk-publishable-key="{{ clerk_publishable_key }}"
       src="https://more-bass-68.clerk.accounts.dev/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
@@ -62,8 +61,9 @@
     <script>
       function initializeClerk() {
         const authErrorDiv = document.getElementById('auth-error');
+        const appDiv = document.getElementById('app');
 
-        if (typeof Clerk === 'undefined') {
+        if (typeof window.Clerk === 'undefined') {
           console.error('Clerk not loaded yet, retrying in 100ms');
           if (authErrorDiv) {
             authErrorDiv.textContent = 'Clerk not loaded, retrying...';
@@ -74,16 +74,28 @@
         }
 
         try {
-          Clerk.load().then(() => {
+          window.Clerk.load().then(() => {
             if (authErrorDiv) {
               authErrorDiv.classList.add('hidden');
             }
 
-            Clerk.addListener(({ user }) => {
-              if (user) {
-                window.location.href = '/';
+            if (appDiv) {
+              if (window.Clerk.user) {
+                appDiv.innerHTML = '<div id="user-button"></div>';
+                const userButtonDiv = document.getElementById('user-button');
+                window.Clerk.mountUserButton(userButtonDiv);
+              } else {
+                appDiv.innerHTML = '<div id="sign-in"></div>';
+                const signInDiv = document.getElementById('sign-in');
+                window.Clerk.mountSignIn(signInDiv);
               }
-            });
+            } else {
+              window.Clerk.addListener(({ user }) => {
+                if (user) {
+                  window.location.href = '/';
+                }
+              });
+            }
           }).catch(error => {
             console.error('Error initializing Clerk:', error);
             if (authErrorDiv) {

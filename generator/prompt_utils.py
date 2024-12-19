@@ -1,6 +1,6 @@
 import random
 from typing import Dict, Any, List
-from models import Rarity
+from card_models import Rarity
 
 # Constants
 DEFAULT_SET_NAME = 'GEN'
