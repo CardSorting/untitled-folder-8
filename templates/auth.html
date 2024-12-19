@@ -1,7 +1,45 @@
 {% extends "base.html" %}
 
+{% block head %}
+<!-- FirebaseUI CSS -->
+<link type="text/css" rel="stylesheet" href="https://www.gstatic.com/firebasejs/ui/6.1.0/firebase-ui-auth.css" />
+<!-- FirebaseUI JS -->
+<script src="https://www.gstatic.com/firebasejs/ui/6.1.0/firebase-ui-auth.js"></script>
+{% endblock %}
+
 {% block content %}
-    <div id="app" class="min-w-[100px] min-h-[40px] flex items-center justify-center">
-        <div class="text-sm text-blue-200">Loading auth...</div>
-    </div>
+<div id="firebaseui-auth-container" class="min-w-[100px] min-h-[40px] flex items-center justify-center"></div>
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize the FirebaseUI Widget using Firebase
+        var ui = new firebaseui.auth.AuthUI(firebase.auth());
+
+        var uiConfig = {
+            signInOptions: [
+                // Enable email/password authentication
+                firebase.auth.EmailAuthProvider.PROVIDER_ID,
+                // Add other providers as needed:
+                // firebase.auth.GoogleAuthProvider.PROVIDER_ID,
+                // firebase.auth.FacebookAuthProvider.PROVIDER_ID,
+                // firebase.auth.TwitterAuthProvider.PROVIDER_ID,
+                // firebase.auth.GithubAuthProvider.PROVIDER_ID
+            ],
+            callbacks: {
+                signInSuccessWithAuthResult: function(authResult, redirectUrl) {
+                    // User successfully signed in.
+                    // Return type determines whether we continue the redirect automatically
+                    // or whether we leave that to developer to handle.
+                    return true;
+                }
+            },
+            signInFlow: 'popup',
+            signInSuccessUrl: '/',
+            tosUrl: '/terms-of-service', // Terms of service url
+            privacyPolicyUrl: '/privacy-policy' // Privacy policy url
+        };
+
+        // Start the FirebaseUI Widget
+        ui.start('#firebaseui-auth-container', uiConfig);
+    });
+</script>
 {% endblock %}

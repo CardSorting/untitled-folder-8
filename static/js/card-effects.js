@@ -1,3 +1,24 @@
+// Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+import { getAnalytics } from "firebase/analytics";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyBcnTJ78jJheHqF8HPe2FpszbWWRGL6bTA",
+  authDomain: "playmoretcg-774b1.firebaseapp.com",
+  projectId: "playmoretcg-774b1",
+  storageBucket: "playmoretcg-774b1.firebasestorage.app",
+  messagingSenderId: "849366628304",
+  appId: "1:849366628304:web:cd95ad77317f478417ebd5",
+  measurementId: "G-1JJVYSS2VQ"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
 class MTGCard3DTiltEffect {
     constructor(cardElement, isLightbox = false) {
         console.log('Initializing MTGCard3DTiltEffect', isLightbox ? 'for lightbox' : 'for card');

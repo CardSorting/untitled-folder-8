@@ -8,12 +8,14 @@
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
     <link rel="preload" href="/static/js/card-effects.js" as="script">
     <script src="/static/js/card-effects.js" defer></script>
-    <script
-      crossorigin="anonymous"
-      data-clerk-publishable-key="{{ clerk_publishable_key }}"
-      src="https://more-bass-68.clerk.accounts.dev/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
-      type="text/javascript"
-    ></script>
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script>
+      // Initialize Firebase
+      const firebaseConfig = JSON.parse('{{ firebase_config | tojson | safe }}');
+      firebase.initializeApp(firebaseConfig);
+    </script>
     <style>
         body {
             font-family: 'Roboto', sans-serif;
@@ -28,12 +30,18 @@
                     formData.append('rarity', rarity);
                 }
 
+                const token = localStorage.getItem('firebaseToken');
+                if (!token) {
+                    throw new Error('Not authenticated');
+                }
+
                 const response = await fetch('/generate-card', {
                     method: 'POST',
                     body: formData,
                     headers: {
                         // Explicitly set content type for multipart form data
-                        'Content-Type': 'multipart/form-data; boundary=' + generateBoundary()
+                        'Content-Type': 'multipart/form-data; boundary=' + generateBoundary(),
+                        'Authorization': `Bearer ${token}`
                     }
                 });
 
@@ -59,61 +67,25 @@
         }
     </script>
     <script>
-      function initializeClerk() {
-        const authErrorDiv = document.getElementById('auth-error');
-        const appDiv = document.getElementById('app');
+      // Initialize Firebase Auth
+      document.addEventListener('DOMContentLoaded', function() {
+        const auth = firebase.auth();
 
-        if (typeof window.Clerk === 'undefined') {
-          console.error('Clerk not loaded yet, retrying in 100ms');
-          if (authErrorDiv) {
-            authErrorDiv.textContent = 'Clerk not loaded, retrying...';
-            authErrorDiv.classList.remove('hidden');
+        // Listen for auth state changes
+        auth.onAuthStateChanged(function(user) {
+          if (user && !window.location.pathname.includes('/auth')) {
+            // User is signed in and not on auth page
+            user.getIdToken().then(function(token) {
+              // Store the token for API requests
+              localStorage.setItem('firebaseToken', token);
+            });
+          } else if (!user && !window.location.pathname.includes('/auth')) {
+            // User is signed out and not on auth page
+            localStorage.removeItem('firebaseToken');
+            window.location.href = '/auth';
           }
-          setTimeout(initializeClerk, 100);
-          return;
-        }
-
-        try {
-          window.Clerk.load().then(() => {
-            if (authErrorDiv) {
-              authErrorDiv.classList.add('hidden');
-            }
-
-            if (appDiv) {
-              if (window.Clerk.user) {
-                appDiv.innerHTML = '<div id="user-button"></div>';
-                const userButtonDiv = document.getElementById('user-button');
-                window.Clerk.mountUserButton(userButtonDiv);
-              } else {
-                appDiv.innerHTML = '<div id="sign-in"></div>';
-                const signInDiv = document.getElementById('sign-in');
-                window.Clerk.mountSignIn(signInDiv);
-              }
-            } else {
-              window.Clerk.addListener(({ user }) => {
-                if (user) {
-                  window.location.href = '/';
-                }
-              });
-            }
-          }).catch(error => {
-            console.error('Error initializing Clerk:', error);
-            if (authErrorDiv) {
-              authErrorDiv.textContent = 'Error initializing Clerk.';
-              authErrorDiv.classList.remove('hidden');
-            }
-          });
-        } catch (error) {
-          console.error('Error in Clerk initialization:', error);
-          if (authErrorDiv) {
-            authErrorDiv.textContent = 'Error in Clerk initialization.';
-            authErrorDiv.classList.remove('hidden');
-          }
-        }
-      }
-
-      // Start initialization when DOM is ready
-      document.addEventListener('DOMContentLoaded', initializeClerk);
+        });
+      });
     </script>
     {% block head %}{% endblock %}
 </head>

@@ -9,6 +9,6 @@ class UserModel(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    clerk_id = Column(String, unique=True, index=True)
+    firebase_id = Column(String, unique=True, index=True)
     email = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)

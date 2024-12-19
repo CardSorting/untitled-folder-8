@@ -7,7 +7,8 @@ import asyncio
 import re
 from datetime import datetime
 import json
-from jose import jwt
+import firebase_admin
+from firebase_admin import credentials, auth
 
 from fastapi import FastAPI, Request, Form, HTTPException, Depends
 from fastapi.templating import Jinja2Templates
@@ -74,11 +75,23 @@ app = FastAPI(title="Magic Card Generator")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
+# Initialize Firebase Admin SDK
+cred = credentials.Certificate(os.getenv('FIREBASE_SERVICE_ACCOUNT_PATH'))
+firebase_admin.initialize_app(cred)
+
 # Template context dependency
 async def get_template_context(request: Request):
     return {
         "request": request,
-        "clerk_publishable_key": os.getenv("CLERK_API_KEY")
+        "firebase_config": {
+            "apiKey": os.getenv("FIREBASE_API_KEY"),
+            "authDomain": os.getenv("FIREBASE_AUTH_DOMAIN"),
+            "projectId": os.getenv("FIREBASE_PROJECT_ID"),
+            "storageBucket": os.getenv("FIREBASE_STORAGE_BUCKET"),
+            "messagingSenderId": os.getenv("FIREBASE_MESSAGING_SENDER_ID"),
+            "appId": os.getenv("FIREBASE_APP_ID"),
+            "measurementId": os.getenv("FIREBASE_MEASUREMENT_ID")
+        }
     }
 
 # Dependency to get database session
@@ -91,37 +104,32 @@ def get_db():
 
 async def get_current_user(request: Request, db: Session = Depends(get_db)):
     """
-    Verify the Clerk JWT token and retrieve the current user.
+    Verify the Firebase JWT token and retrieve the current user.
     """
     authorization = request.headers.get("Authorization")
-    if not authorization:
+    if not authorization or not authorization.startswith("Bearer "):
         return None
 
     try:
         token = authorization.split(" ")[1]
-        decoded_token = jwt.decode(
-            token,
-            os.getenv("CLERK_JWT_KEY"),
-            algorithms=["HS256"],
-            options={"verify_signature": False, "verify_aud": False, "verify_exp": False}
-        )
+        decoded_token = auth.verify_id_token(token)
         
-        user_id = decoded_token.get("sub")
+        user_id = decoded_token.get("uid")
         email = decoded_token.get("email")
         
         if not user_id:
             return None
         
-        user = db.query(UserModel).filter(UserModel.clerk_id == user_id).first()
+        user = db.query(UserModel).filter(UserModel.firebase_id == user_id).first()
         if not user:
-            user = UserModel(clerk_id=user_id, email=email)
+            user = UserModel(firebase_id=user_id, email=email)
             db.add(user)
             db.commit()
             db.refresh(user)
         
         return user
     except Exception as e:
-        logger.error(f"Error decoding JWT token: {e}")
+        logger.error(f"Error verifying Firebase token: {e}")
         return None
 
 @app.get("/", response_class=HTMLResponse)
