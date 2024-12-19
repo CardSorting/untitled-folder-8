@@ -1,101 +1,93 @@
 import logging
 import requests
-from typing import Dict, Any, Tuple
-from tenacity import retry, stop_after_attempt, wait_random_exponential
+from typing import Dict, Any, Tuple, Optional
 from openai_config import openai_client
 from backblaze_config import upload_image
 
 # Logging configuration
 logger = logging.getLogger(__name__)
 
-@retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(5))
+# Cache for DALL-E responses
+_image_cache: Dict[str, Tuple[str, str]] = {}
+
 def generate_card_image(card_data: Dict[str, Any]) -> Tuple[str, str]:
     """Generate artwork for the card using OpenAI's image generation API."""
-    logger.info(f"\n=== Generating image for card: {card_data.get('name')} ===")
+    # Basic validation
+    if not card_data or not isinstance(card_data, dict):
+        raise ValueError("Invalid card data provided")
     
-    # Get card details
-    card_type = card_data.get('type', 'Unknown')
-    color_str = card_data.get('color', '')
-    if isinstance(color_str, list):
-        color_str = '/'.join(color_str)
+    name = card_data.get('name')
+    if not name:
+        raise ValueError("Card name is required")
     
-    # Create a focused prompt for the image
-    prompt = (
-        f"Professional fantasy character art of a {card_type.lower()} for Magic card. "
-        f"Create ONLY the main character in {color_str} colors, centered in frame. "
-        "Use a completely plain white background. "
-        "NO background elements, NO patterns, NO decorative effects - ONLY the character. "
-        "Style: Detailed digital art like a 3D model render. "
-    )
-    max_attempts = 3
-
-    for attempt in range(max_attempts):
-        logger.info(f"\nAttempt {attempt + 1} of {max_attempts}")
-        try:
-            # Log DALL-E request
-            logger.info("\nSending request to DALL-E API:")
-            logger.info(f"Model: dall-e-3")
-            logger.info(f"Size: 1024x1024")
-            logger.info(f"Quality: standard")  # Use HD quality for better detail
-            logger.info(f"Style: vivid")  # Use vivid for stronger artistic direction
-            logger.info(f"Prompt: {prompt}")
-            
-            # Generate image with DALL-E
-            response = openai_client.images.generate(
-                model="dall-e-3",
-                prompt=prompt,
-                size="1024x1024",
-                quality="standard",  # Higher quality
-                n=1,
-                style="vivid"  # Better for fantasy art
-            )
-            
-            # Log DALL-E response
-            image_url = response.data[0].url
-            logger.info("\nReceived response from DALL-E API:")
-            logger.info(f"Image URL: {image_url}")
-            if hasattr(response.data[0], 'revised_prompt'):
-                logger.info(f"Revised prompt: {response.data[0].revised_prompt}")
-            
-            # Download image from OpenAI with timeout and retries
-            download_attempts = 3
-            for dl_attempt in range(download_attempts):
-                try:
-                    response = requests.get(image_url, timeout=30)
-                    if response.status_code == 200:
-                        break
-                    logger.warning(f"Failed to download image (attempt {dl_attempt + 1}): Status {response.status_code}")
-                    if dl_attempt == download_attempts - 1:
-                        raise ValueError(f"Failed to download image after {download_attempts} attempts")
-                except requests.RequestException as e:
-                    if dl_attempt == download_attempts - 1:
-                        raise
-                    logger.warning(f"Download attempt {dl_attempt + 1} failed: {e}")
-            
-            # Prepare image data for upload
-            image_data = response.content
-            if not image_data:
-                raise ValueError("Downloaded image data is empty")
-                
-            filename = f"card_{card_data['set_name']}_{card_data['card_number']}.png"
-            
-            # Upload to Backblaze with validation
-            try:
-                b2_url = upload_image(image_data, filename)
-                if not b2_url:
-                    raise ValueError("Failed to get valid URL from Backblaze upload")
-                return image_url, b2_url
-            except Exception as e:
-                logger.error(f"Backblaze upload error: {e}")
-                if attempt < max_attempts - 1:
-                    continue
-                raise
-            
-        except Exception as e:
-            logger.error(f"Error generating card image (attempt {attempt + 1}): {e}")
-            if attempt < max_attempts - 1:
-                continue
-            raise ValueError(f"Failed to generate and store card image after {max_attempts} attempts: {str(e)}")
+    # Check cache
+    cache_key = f"{name}_{card_data.get('set_name')}_{card_data.get('card_number')}"
+    if cache_key in _image_cache:
+        logger.info(f"Using cached image for {name}")
+        return _image_cache[cache_key]
     
-    # Fallback if all attempts fail
-    raise ValueError("Could not generate card image after multiple attempts")
+    logger.info(f"\n=== Generating image for card: {name} ===")
+    
+    try:
+        # Get the focused prompt
+        from generator.prompt_utils import create_dalle_prompt
+        prompt = create_dalle_prompt(card_data)
+        
+        # Create final prompt with context
+        final_prompt = (
+            "As a professional Magic: The Gathering artist, create an illustration that perfectly captures "
+            "this card's unique identity. The artwork must be centered, detailed, and iconic. " + prompt
+        )
+        
+        # Log DALL-E request
+        logger.info("\nSending request to DALL-E API:")
+        logger.info(f"Model: dall-e-3")
+        logger.info(f"Size: 1024x1024")
+        logger.info(f"Quality: hd")
+        logger.info(f"Style: natural")
+        logger.info(f"Prompt: {final_prompt}")
+        
+        # Generate image with DALL-E
+        dalle_response = openai_client.images.generate(
+            model="dall-e-3",
+            prompt=final_prompt,
+            size="1024x1024",
+            quality="hd",
+            n=1,
+            style="natural",
+            user="mtg_card_artist",
+            response_format="url"
+        )
+        
+        # Get image URL
+        if not dalle_response or not dalle_response.data:
+            raise ValueError("Invalid response from DALL-E API")
+        
+        image_url = dalle_response.data[0].url
+        if not image_url:
+            raise ValueError("No image URL in DALL-E response")
+            
+        logger.info("\nReceived response from DALL-E API:")
+        logger.info(f"Image URL: {image_url}")
+        
+        # Download image
+        img_response = requests.get(image_url, timeout=60)
+        img_response.raise_for_status()
+        
+        # Basic validation of image data
+        if not img_response.content:
+            raise ValueError("No image data received")
+        
+        # Upload to Backblaze
+        filename = f"card_{card_data['set_name']}_{card_data['card_number']}.png"
+        b2_url = upload_image(img_response.content, filename)
+        if not b2_url:
+            raise ValueError("Failed to upload image to Backblaze")
+        
+        # Cache the result
+        _image_cache[cache_key] = (image_url, b2_url)
+        return image_url, b2_url
+        
+    except Exception as e:
+        logger.error(f"Failed to generate image: {str(e)}")
+        raise ValueError(f"Image generation failed: {str(e)}")

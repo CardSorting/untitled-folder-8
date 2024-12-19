@@ -3,11 +3,10 @@ import json
 import logging
 import re
 from typing import Dict, Any, Tuple
-from tenacity import retry, stop_after_attempt, wait_random_exponential
 from openai import OpenAIError
 from openai_config import openai_client
 from generator.card_data_utils import standardize_card_data, validate_card_data, get_rarity
-from generator.prompt_utils import generate_card_prompt, create_dalle_prompt
+from generator.prompt_utils import generate_card_prompt
 from generator.image_utils import generate_card_image
 from card_models import Rarity
 
@@ -27,131 +26,8 @@ def get_next_set_name_and_number() -> Tuple[str, int, int]:
     set_number = random.randint(1, 10)
     return DEFAULT_SET_NAME, set_number, random.randint(1, CARD_NUMBER_LIMIT)
 
-@retry(wait=wait_random_exponential(min=1, max=60), stop=stop_after_attempt(3))
-def generate_card(rarity: str = None) -> Dict[str, Any]:
-    """Generate a card with optional rarity."""
-    # Validate rarity input
-    if rarity and rarity not in [r.value for r in Rarity]:
-        logger.warning(f"Invalid rarity provided: {rarity}. Defaulting to random.")
-        rarity = None
-    
-    # Generate prompt with optional rarity
-    try:
-        prompt = generate_card_prompt(rarity)
-        
-        # Log that we're generating card data (not image)
-        logger.info("Generating card data with GPT-4...")
-        
-        try:
-            response = openai_client.chat.completions.create(
-                model="gpt-4o-mini-2024-07-18",
-                messages=[
-                    {"role": "system", "content": "You are a Magic: The Gathering card designer. Create balanced and thematic cards that follow the game's rules and mechanics. Keep abilities clear and concise, using established keyword mechanics where possible. Limit flavor text to one or two impactful sentences."},
-                    {"role": "user", "content": prompt}
-                ],
-                max_tokens=800,
-                temperature=0.7,
-            )
-            
-            card_data_str = response.choices[0].message.content
-            logger.debug(f"Raw card data from GPT: {card_data_str}")
-        except Exception as openai_error:
-            logger.error(f"OpenAI API error: {openai_error}")
-            raise ValueError(f"Failed to generate card data: {str(openai_error)}")
-        
-        # Attempt to parse the card data
-        try:
-            card_data = json.loads(card_data_str)
-        except json.JSONDecodeError:
-            # If JSON parsing fails, try a more lenient parsing method
-            card_data = parse_card_data_from_text(card_data_str)
-        
-        # Validate and standardize the card data
-        try:
-            validated_card_data = validate_card_data(card_data)
-            card_data = standardize_card_data(validated_card_data)
-        except Exception as validation_error:
-            logger.warning(f"Card data validation failed: {validation_error}")
-            raise ValueError(f"Card data validation failed: {str(validation_error)}")
-        
-        # Determine set and card details
-        set_name, set_number, card_number = get_next_set_name_and_number()
-        
-        # Assign rarity if not specified
-        if not rarity:
-            card_rarity = get_rarity(set_number, card_number)
-            card_data['rarity'] = card_rarity.value
-        
-        # Add set and card number information
-        card_data['set_name'] = set_name
-        card_data['set_number'] = set_number
-        card_data['card_number'] = f"{card_number:03d}"
-        
-        # Ensure all required fields are present
-        required_fields = [
-            'name', 'manaCost', 'type', 'text', 
-            'power', 'toughness', 'rarity', 
-            'set_name', 'set_number', 'card_number'
-        ]
-        for field in required_fields:
-            if field not in card_data:
-                card_data[field] = get_default_value_for_field(field)
-        
-        try:
-            # Log successful card data generation
-            logger.info("Card data generated successfully")
-            logger.debug(f"Final card data: {json.dumps(card_data, indent=2)}")
-            
-            # Try to generate the image
-            dalle_url, b2_url = generate_card_image(card_data)
-            
-            # If we got here, both card data and image generation succeeded
-            final_card_data = {
-                'id': card_data.get('id'),
-                'name': card_data['name'],
-                'manaCost': card_data['manaCost'],
-                'type': card_data['type'],
-                'text': card_data['text'],
-                'rarity': card_data['rarity'],
-                'power': card_data.get('power'),
-                'toughness': card_data.get('toughness'),
-                'set_name': card_data['set_name'],
-                'card_number': card_data['card_number'],
-                'dalle_url': dalle_url,
-                'b2_url': b2_url,
-                'image_path': b2_url
-            }
-            return final_card_data
-            
-        except Exception as img_error:
-            logger.error(f"Error during image generation: {img_error}")
-            raise ValueError(f"Image generation failed: {str(img_error)}")
-    
-    except Exception as e:
-        logger.error(f"Unexpected error in card generation: {e}", exc_info=True)
-        raise
-
-def get_default_value_for_field(field: str) -> Any:
-    """Provide default values for missing card fields."""
-    default_values = {
-        'name': 'Unnamed Card',
-        'manaCost': '{1}',
-        'type': 'Creature',
-        'text': 'No special abilities.',
-        'power': '1',
-        'toughness': '1',
-        'rarity': 'Common',
-        'set_name': 'GEN',
-        'set_number': 1,
-        'card_number': '001'
-    }
-    return default_values.get(field, 'Unknown')
-
 def parse_card_data_from_text(text: str) -> Dict[str, Any]:
-    """
-    Attempt to parse card data from a text response when JSON parsing fails.
-    This method uses heuristics to extract card information.
-    """
+    """Attempt to parse card data from a text response when JSON parsing fails."""
     logger.warning(f"Falling back to text parsing for card data: {text[:200]}...")
     
     # Simple heuristics to extract card data
@@ -172,40 +48,114 @@ def parse_card_data_from_text(text: str) -> Dict[str, Any]:
     
     return default_card
 
-def generate_fallback_card(rarity: str = None) -> Dict[str, Any]:
-    """
-    Generate a fallback card when the primary generation method fails.
-    Provides a more diverse set of fallback cards to prevent repetition.
-    """
-    fallback_cards = [
-        {
-            "name": "Resilient Survivor",
-            "manaCost": "{1}{W}",
-            "type": "Creature — Human Soldier",
-            "text": "Whenever Resilient Survivor blocks, it gets +1/+1 until end of turn.",
-            "power": "2",
-            "toughness": "3",
-            "rarity": rarity or Rarity.COMMON.value
-        },
-        {
-            "name": "Temporal Anomaly",
-            "manaCost": "{2}{U}",
-            "type": "Instant",
-            "text": "Return target creature to its owner's hand. Scry 2.",
-            "rarity": rarity or Rarity.UNCOMMON.value
-        },
-        {
-            "name": "Wildfire Elemental",
-            "manaCost": "{3}{R}",
-            "type": "Creature — Elemental",
-            "text": "Haste. When Wildfire Elemental enters the battlefield, it deals 2 damage to each non-flying creature.",
-            "power": "3",
-            "toughness": "2",
-            "rarity": rarity or Rarity.RARE.value
-        }
-    ]
+def get_default_value_for_field(field: str) -> Any:
+    """Provide default values for missing card fields."""
+    default_values = {
+        'name': 'Unnamed Card',
+        'manaCost': '{1}',
+        'type': 'Creature',
+        'text': 'No special abilities.',
+        'power': '1',
+        'toughness': '1',
+        'rarity': 'Common',
+        'set_name': 'GEN',
+        'set_number': 1,
+        'card_number': '001'
+    }
+    return default_values.get(field, 'Unknown')
+
+def generate_card(rarity: str = None) -> Dict[str, Any]:
+    """Generate a card with optional rarity."""
+    # Validate rarity input
+    if rarity and rarity not in [r.value for r in Rarity]:
+        logger.warning(f"Invalid rarity provided: {rarity}. Defaulting to random.")
+        rarity = None
     
-    # Log the fallback card generation
-    logger.warning(f"Generating fallback card with rarity: {rarity or 'unspecified'}")
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        try:
+            # Generate card data
+            logger.info(f"\n=== Generating card (Attempt {attempt + 1}/{max_attempts}) ===")
+            prompt = generate_card_prompt(rarity)
+            
+            # Generate with GPT-4
+            logger.info("Generating card data with GPT-4...")
+            response = openai_client.chat.completions.create(
+                model="gpt-4o-mini-2024-07-18",
+                messages=[
+                    {"role": "system", "content": "You are a Magic: The Gathering card designer. Create balanced and thematic cards that follow the game's rules and mechanics. Keep abilities clear and concise, using established keyword mechanics where possible. Limit flavor text to one or two impactful sentences."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=800,
+                temperature=0.7,
+            )
+            
+            # Parse response
+            card_data_str = response.choices[0].message.content
+            try:
+                card_data = json.loads(card_data_str)
+            except json.JSONDecodeError:
+                card_data = parse_card_data_from_text(card_data_str)
+            
+            # Validate and standardize
+            card_data = standardize_card_data(validate_card_data(card_data))
+            
+            # Add card details
+            set_name, set_number, card_number = get_next_set_name_and_number()
+            card_data.update({
+                'set_name': set_name,
+                'set_number': set_number,
+                'card_number': f"{card_number:03d}",
+                'rarity': rarity or get_rarity(set_number, card_number).value
+            })
+            
+            # Ensure required fields
+            for field in ['name', 'manaCost', 'type', 'text', 'power', 'toughness']:
+                if field not in card_data:
+                    card_data[field] = get_default_value_for_field(field)
+            
+            # Extract color from mana cost if needed
+            if 'color' not in card_data and 'manaCost' in card_data:
+                colors = []
+                if '{W}' in card_data['manaCost']: colors.append('White')
+                if '{U}' in card_data['manaCost']: colors.append('Blue')
+                if '{B}' in card_data['manaCost']: colors.append('Black')
+                if '{R}' in card_data['manaCost']: colors.append('Red')
+                if '{G}' in card_data['manaCost']: colors.append('Green')
+                if colors:
+                    card_data['color'] = colors
+            
+            # Try to generate image
+            try:
+                dalle_url, b2_url = generate_card_image(card_data)
+                image_success = True
+            except ValueError as img_error:
+                logger.error(f"Image generation failed: {img_error}")
+                dalle_url = None
+                b2_url = None
+                image_success = False
+            
+            # Return final card data
+            return {
+                'id': card_data.get('id'),
+                'name': card_data['name'],
+                'manaCost': card_data['manaCost'],
+                'type': card_data['type'],
+                'text': card_data['text'],
+                'rarity': card_data['rarity'],
+                'power': card_data.get('power'),
+                'toughness': card_data.get('toughness'),
+                'set_name': card_data['set_name'],
+                'card_number': card_data['card_number'],
+                'dalle_url': dalle_url,
+                'b2_url': b2_url,
+                'image_path': b2_url if image_success else None
+            }
+            
+        except Exception as e:
+            if attempt < max_attempts - 1:
+                logger.error(f"Attempt {attempt + 1} failed: {e}")
+                continue
+            raise ValueError(f"Card generation failed after {max_attempts} attempts: {str(e)}")
     
-    return random.choice(fallback_cards)
+    raise ValueError("Card generation failed for unknown reason")

@@ -14,6 +14,21 @@ BASE_RARITY_PROBABILITIES = {
     Rarity.MYTHIC: 0.01       # ~1/8 of rare slots (1/8 * 1/14)
 }
 
+def extract_colors_from_mana_cost(mana_cost: str) -> List[str]:
+    """Extract colors from a mana cost string."""
+    color_map = {
+        'W': 'White',
+        'U': 'Blue',
+        'B': 'Black',
+        'R': 'Red',
+        'G': 'Green'
+    }
+    colors = []
+    for char in mana_cost:
+        if char in color_map:
+            colors.append(color_map[char])
+    return list(dict.fromkeys(colors))  # Remove duplicates while preserving order
+
 def standardize_card_data(card_data: Dict[str, Any]) -> Dict[str, Any]:
     """Standardizes card data fields and ensures all required fields are present with length validation."""
     # Character limits for different fields
@@ -23,6 +38,10 @@ def standardize_card_data(card_data: Dict[str, Any]) -> Dict[str, Any]:
         'flavorText': 120,
         'type': 50
     }
+    
+    # Extract colors from mana cost if color isn't explicitly set
+    if 'color' not in card_data and 'manaCost' in card_data:
+        card_data['color'] = extract_colors_from_mana_cost(card_data['manaCost'])
     
     mapping = {
         'Name': 'name',
