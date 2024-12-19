@@ -2,6 +2,7 @@ from sqlalchemy import Column, Integer, String, DateTime, Boolean
 from sqlalchemy.orm import relationship, Session
 from datetime import datetime
 from database import Base
+from websocket_manager import websocket_manager
 
 class UserModel(Base):
     __tablename__ = "users"
@@ -34,6 +35,20 @@ class UserModel(Base):
             transaction_type=transaction_type
         )
         db.add(transaction)
+        
+        # Broadcast credit update via WebSocket
+        await websocket_manager.broadcast_to_user(
+            self.firebase_id,
+            {
+                "type": "credit_update",
+                "credits": self.credits,
+                "transaction": {
+                    "amount": amount,
+                    "description": description,
+                    "type": transaction_type
+                }
+            }
+        )
     
     async def spend_credits(self, db: "Session", amount: int, description: str, transaction_type: str) -> bool:
         """
@@ -52,4 +67,19 @@ class UserModel(Base):
             transaction_type=transaction_type
         )
         db.add(transaction)
+        
+        # Broadcast credit update via WebSocket
+        await websocket_manager.broadcast_to_user(
+            self.firebase_id,
+            {
+                "type": "credit_update",
+                "credits": self.credits,
+                "transaction": {
+                    "amount": -amount,
+                    "description": description,
+                    "type": transaction_type
+                }
+            }
+        )
+        
         return True

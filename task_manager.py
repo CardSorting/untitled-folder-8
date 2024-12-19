@@ -52,6 +52,16 @@ class TaskQueue:
                 task.status = "completed"
                 task.result = result
                 self._results[task_id] = task
+                
+                # Send WebSocket update
+                await websocket_manager.broadcast_to_user(
+                    task.user_id,
+                    {
+                        "type": "task_complete",
+                        "task_id": task_id,
+                        "result": result
+                    }
+                )
     
     async def mark_failed(self, task_id: str, error: str):
         """Mark a task as failed with error message."""
@@ -61,6 +71,16 @@ class TaskQueue:
                 task.status = "failed"
                 task.error = error
                 self._results[task_id] = task
+                
+                # Send WebSocket update
+                await websocket_manager.broadcast_to_user(
+                    task.user_id,
+                    {
+                        "type": "task_failed",
+                        "task_id": task_id,
+                        "error": error
+                    }
+                )
     
     async def get_task_status(self, task_id: str) -> Optional[Task]:
         """Get the current status of a task."""
@@ -122,6 +142,17 @@ class TaskManager:
         )
         
         await self.queues[queue_name].enqueue(task)
+        
+        # Send WebSocket update for task submission
+        await websocket_manager.broadcast_to_user(
+            user_id,
+            {
+                "type": "task_submitted",
+                "task_id": task.id,
+                "task_type": task_type
+            }
+        )
+        
         return task.id
     
     async def get_task_status(self, queue_name: str, task_id: str) -> Optional[Task]:

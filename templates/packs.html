@@ -1,53 +1,440 @@
 {% extends "base.html" %}
 
+{% block head %}
+<style>
+.pack-card {
+    perspective: 1500px;
+    transition: transform 0.3s;
+}
+
+.pack-card-inner {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    transition: transform 0.6s;
+    transform-style: preserve-3d;
+}
+
+.pack-card:hover .pack-card-inner {
+    transform: rotateY(10deg) rotateX(5deg);
+}
+
+.pack-image-container {
+    position: relative;
+    height: 400px;
+    overflow: hidden;
+    border-radius: 16px 16px 0 0;
+    background: linear-gradient(45deg, #1a365d, #2d3748);
+}
+
+.pack-image {
+    width: 80%;
+    height: auto;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    transition: transform 0.3s ease;
+    animation: floatAnimation 3s ease-in-out infinite;
+    filter: drop-shadow(0 0 20px rgba(66, 153, 225, 0.3));
+}
+
+@keyframes floatAnimation {
+    0%, 100% {
+        transform: translate(-50%, -50%);
+    }
+    50% {
+        transform: translate(-50%, -52%);
+    }
+}
+
+.pack-glow {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: radial-gradient(
+        circle at center,
+        rgba(66, 153, 225, 0.2) 0%,
+        transparent 70%
+    );
+    animation: glowPulse 2s ease-in-out infinite;
+    mix-blend-mode: screen;
+}
+
+@keyframes glowPulse {
+    0%, 100% {
+        opacity: 0.5;
+    }
+    50% {
+        opacity: 1;
+    }
+}
+
+.pack-shine {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(
+        45deg,
+        transparent 0%,
+        rgba(255, 255, 255, 0.1) 45%,
+        rgba(255, 255, 255, 0.2) 50%,
+        rgba(255, 255, 255, 0.1) 55%,
+        transparent 100%
+    );
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+
+.pack-card:hover .pack-shine {
+    opacity: 1;
+}
+
+.pack-card:hover .pack-image {
+    transform: translate(-50%, -50%) scale(1.05);
+}
+
+.price-tag {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(8px);
+    padding: 1rem;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: white;
+    text-align: center;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    transform: translateZ(20px);
+}
+
+.price-amount {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #4299e1;
+}
+
+.price-currency {
+    font-size: 0.875rem;
+    opacity: 0.8;
+}
+
+.tab-content {
+    display: none;
+    animation: fadeIn 0.3s ease-out forwards;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.tab-button {
+    position: relative;
+    transition: all 0.3s;
+}
+
+.tab-button::after {
+    content: '';
+    position: absolute;
+    bottom: -2px;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: #4299e1;
+    transform: scaleX(0);
+    transition: transform 0.3s;
+}
+
+.tab-button.active {
+    color: #4299e1;
+}
+
+.tab-button.active::after {
+    transform: scaleX(1);
+}
+
+.stat-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1rem;
+}
+
+.stat-item {
+    background: #f8fafc;
+    padding: 1rem;
+    border-radius: 8px;
+    text-align: center;
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #4299e1;
+}
+
+.stat-label {
+    font-size: 0.875rem;
+    color: #64748b;
+}
+
+.rarity-item {
+    display: flex;
+    align-items: center;
+    padding: 1rem;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    margin-bottom: 0.5rem;
+}
+
+.rarity-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 1rem;
+}
+
+.rarity-details {
+    flex: 1;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.mythic { background: linear-gradient(45deg, #f6ad55, #ed64a6); }
+.rare { background: linear-gradient(45deg, #ecc94b, #d69e2e); }
+.uncommon { background: linear-gradient(45deg, #63b3ed, #4299e1); }
+.common { background: linear-gradient(45deg, #a0aec0, #718096); }
+
+.card-reveal {
+    animation: revealCard 0.6s ease-out forwards;
+    opacity: 0;
+    transform: translateY(20px);
+}
+
+@keyframes revealCard {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.toast {
+    animation: slideIn 0.3s ease-out forwards;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.pack-opening {
+    animation: packShake 0.5s ease-in-out infinite;
+}
+
+@keyframes packShake {
+    0%, 100% { transform: rotate(0deg); }
+    25% { transform: rotate(-5deg); }
+    75% { transform: rotate(5deg); }
+}
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-    <h1 class="text-3xl font-bold text-center mb-8">Magic Card Packs</h1>
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <h1 class="text-4xl font-bold text-center mb-4 text-gray-800">
+        Magic Card Packs
+    </h1>
+    <p class="text-center text-gray-600 mb-12 max-w-2xl mx-auto">
+        Expand your collection with our premium booster packs.
+    </p>
     
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <!-- Credit Display -->
+    <div class="text-center mb-8">
+        <span class="text-2xl font-bold text-blue-600">Credits: </span>
+        <span id="creditDisplay" class="text-2xl font-bold text-blue-600">Loading...</span>
+    </div>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         <!-- Standard Booster Pack -->
-        <div class="bg-white rounded-lg shadow-lg overflow-hidden">
-            <div class="relative">
-                <img src="/static/card_images/booster-pack.png" alt="Booster Pack" class="w-full h-48 object-cover">
-                <div class="absolute top-0 right-0 bg-blue-600 text-white px-3 py-1 rounded-bl-lg">
-                    100 Credits
+        <div class="pack-card">
+            <div class="pack-card-inner bg-gradient-to-br from-gray-900 to-gray-800 rounded-xl shadow-2xl overflow-hidden">
+                <div class="pack-image-container">
+                    <div class="pack-glow"></div>
+                    <img 
+                        src="/static/card_images/booster-pack.png" 
+                        alt="Booster Pack" 
+                        class="pack-image"
+                    >
+                    <div class="pack-shine"></div>
+                    <div class="price-tag">
+                        <div class="price-amount">100</div>
+                        <div class="price-currency">CREDITS</div>
+                    </div>
                 </div>
-            </div>
-            <div class="p-6">
-                <h2 class="text-xl font-semibold mb-2">Standard Booster Pack</h2>
-                <p class="text-gray-600 mb-4">Contains 14 random cards:</p>
-                <ul class="text-sm text-gray-600 mb-4 list-disc list-inside">
-                    <li>1 Rare or Mythic Rare</li>
-                    <li>3 Uncommons</li>
-                    <li>10 Commons</li>
-                </ul>
-                <button 
-                    onclick="openPack()"
-                    class="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
-                >
-                    Open Pack
-                </button>
+                <div class="p-8 bg-white">
+                    <div class="text-center">
+                        <h2 class="text-2xl font-bold text-gray-800 mb-4">Standard Booster Pack</h2>
+                        <button 
+                            onclick="openPack()"
+                            class="w-full bg-gradient-to-r from-blue-600 to-blue-500 text-white py-4 px-6 rounded-lg font-semibold hover:from-blue-700 hover:to-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transform transition-all duration-200 hover:scale-[1.02] active:scale-[0.98] text-lg mb-8"
+                        >
+                            Open Pack
+                        </button>
+                    </div>
+
+                    <!-- Tabs -->
+                    <div class="border-b border-gray-200 mb-6">
+                        <div class="flex space-x-8">
+                            <button 
+                                onclick="switchTab('overview')" 
+                                class="tab-button active pb-2 text-gray-600 hover:text-gray-800"
+                            >
+                                Overview
+                            </button>
+                            <button 
+                                onclick="switchTab('distribution')" 
+                                class="tab-button pb-2 text-gray-600 hover:text-gray-800"
+                            >
+                                Distribution
+                            </button>
+                            <button 
+                                onclick="switchTab('details')" 
+                                class="tab-button pb-2 text-gray-600 hover:text-gray-800"
+                            >
+                                Details
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Tab Contents -->
+                    <div class="tab-content active" id="overview">
+                        <div class="stat-grid">
+                            <div class="stat-item">
+                                <div class="stat-value">14</div>
+                                <div class="stat-label">Cards per Pack</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value">100%</div>
+                                <div class="stat-label">Unique Cards</div>
+                            </div>
+                        </div>
+                        <p class="text-gray-600 text-center mt-4">
+                            Each pack contains a carefully curated selection of cards across all rarities.
+                        </p>
+                    </div>
+
+                    <div class="tab-content" id="distribution">
+                        <div class="space-y-3">
+                            <div class="rarity-item">
+                                <span class="rarity-indicator mythic"></span>
+                                <div class="rarity-details">
+                                    <span class="font-medium">Mythic Rare</span>
+                                    <span class="text-sm text-gray-500">~7% chance</span>
+                                </div>
+                            </div>
+                            <div class="rarity-item">
+                                <span class="rarity-indicator rare"></span>
+                                <div class="rarity-details">
+                                    <span class="font-medium">Rare</span>
+                                    <span class="text-sm text-gray-500">1 guaranteed</span>
+                                </div>
+                            </div>
+                            <div class="rarity-item">
+                                <span class="rarity-indicator uncommon"></span>
+                                <div class="rarity-details">
+                                    <span class="font-medium">Uncommon</span>
+                                    <span class="text-sm text-gray-500">3 cards</span>
+                                </div>
+                            </div>
+                            <div class="rarity-item">
+                                <span class="rarity-indicator common"></span>
+                                <div class="rarity-details">
+                                    <span class="font-medium">Common</span>
+                                    <span class="text-sm text-gray-500">10 cards</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="tab-content" id="details">
+                        <div class="space-y-4">
+                            <div class="bg-gray-50 p-4 rounded-lg">
+                                <h3 class="font-semibold mb-2">Card Quality</h3>
+                                <p class="text-gray-600 text-sm">All cards are generated in high quality with unique artwork and effects.</p>
+                            </div>
+                            <div class="bg-gray-50 p-4 rounded-lg">
+                                <h3 class="font-semibold mb-2">Ownership</h3>
+                                <p class="text-gray-600 text-sm">Cards are permanently added to your collection upon opening.</p>
+                            </div>
+                            <div class="bg-gray-50 p-4 rounded-lg">
+                                <h3 class="font-semibold mb-2">Trading</h3>
+                                <p class="text-gray-600 text-sm">Cards can be traded with other players or used in your deck.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
+<!-- Toast Notification -->
+<div id="toast" class="fixed top-4 right-4 max-w-md w-full hidden toast">
+    <div class="bg-red-500 text-white px-6 py-4 rounded-lg shadow-xl">
+        <div class="flex items-center">
+            <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
+            <span id="toastMessage" class="text-sm font-medium"></span>
+        </div>
+    </div>
+</div>
+
 <!-- Pack Opening Modal -->
-<div id="packModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-    <div class="bg-white rounded-lg p-8 max-w-lg w-full mx-4">
-        <div id="packContent" class="text-center">
-            <h2 class="text-2xl font-bold mb-4">Opening Pack...</h2>
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+<div id="packModal" class="hidden fixed inset-0 bg-black bg-opacity-75 backdrop-blur-sm flex items-center justify-center z-50">
+    <div class="bg-white rounded-2xl p-8 max-w-lg w-full mx-4 transform transition-all duration-300">
+        <div id="packContent" class="text-center py-12">
+            <img src="/static/card_images/booster-pack.png" alt="Opening Pack" class="w-48 h-48 mx-auto mb-6 pack-opening">
+            <h2 class="text-2xl font-bold mb-4 text-gray-800">Opening Your Pack</h2>
+            <p class="text-gray-600">Preparing your cards...</p>
         </div>
         <div id="packResult" class="hidden">
-            <h3 class="text-xl font-bold mb-4">Your Cards:</h3>
-            <div id="cardList" class="space-y-2 mb-4">
+            <h3 class="text-2xl font-bold mb-6 text-gray-800">Your New Cards</h3>
+            <div id="cardList" class="space-y-3 mb-6 max-h-[60vh] overflow-y-auto pr-2">
                 <!-- Cards will be inserted here -->
             </div>
-            <div class="flex justify-end space-x-4">
+            <div class="flex justify-end">
                 <button 
                     onclick="closePackModal()"
-                    class="bg-gray-200 text-gray-800 py-2 px-4 rounded hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors"
+                    class="bg-gradient-to-r from-gray-600 to-gray-500 text-white py-2 px-6 rounded-lg font-semibold hover:from-gray-700 hover:to-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transform transition-all duration-200"
                 >
                     Close
                 </button>
@@ -57,6 +444,88 @@
 </div>
 
 <script>
+let ws = null;
+
+function connectWebSocket() {
+    const token = localStorage.getItem('firebaseToken');
+    if (!token) return;
+
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${protocol}//${window.location.host}/ws?token=${token}`;
+    
+    ws = new WebSocket(wsUrl);
+    
+    ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        
+        switch (data.type) {
+            case 'task_complete':
+                if (data.result) {
+                    displayPackResults(data.result);
+                }
+                break;
+            
+            case 'task_failed':
+                showToast(data.error || 'Pack opening failed');
+                closePackModal();
+                break;
+            
+            case 'credit_update':
+                updateCreditDisplay(data.credits);
+                break;
+        }
+    };
+    
+    ws.onclose = () => {
+        // Try to reconnect after a delay
+        setTimeout(connectWebSocket, 5000);
+    };
+    
+    ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        showToast('Connection error. Retrying...');
+    };
+}
+
+// Connect WebSocket when page loads
+connectWebSocket();
+
+function updateCreditDisplay(credits) {
+    // Update credit display in the UI
+    const creditDisplay = document.getElementById('creditDisplay');
+    if (creditDisplay) {
+        creditDisplay.textContent = credits;
+    }
+}
+
+function switchTab(tabName) {
+    // Remove active class from all tabs and contents
+    document.querySelectorAll('.tab-button').forEach(button => {
+        button.classList.remove('active');
+    });
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.remove('active');
+    });
+    
+    // Add active class to selected tab and content
+    document.querySelector(`button[onclick="switchTab('${tabName}')"]`).classList.add('active');
+    document.getElementById(tabName).classList.add('active');
+}
+
+function showToast(message, isError = true) {
+    const toast = document.getElementById('toast');
+    const toastMessage = document.getElementById('toastMessage');
+    const toastBg = toast.querySelector('div');
+    
+    toastMessage.textContent = message;
+    toastBg.className = `bg-${isError ? 'red' : 'green'}-500 text-white px-6 py-4 rounded-lg shadow-xl`;
+    toast.classList.remove('hidden');
+    
+    setTimeout(() => {
+        toast.classList.add('hidden');
+    }, 3000);
+}
+
 async function openPack() {
     try {
         const token = localStorage.getItem('firebaseToken');
@@ -86,50 +555,25 @@ async function openPack() {
             throw new Error(error.detail || 'Failed to open pack');
         }
 
+        // Task submitted successfully, wait for WebSocket updates
         const data = await response.json();
-        
-        // Start polling for task status
-        await pollPackStatus(data.task_id);
+        console.log('Pack opening task submitted:', data.task_id);
 
     } catch (error) {
         console.error('Error opening pack:', error);
-        alert(error.message);
+        showToast(error.message);
         closePackModal();
     }
 }
 
-async function pollPackStatus(taskId) {
-    try {
-        const token = localStorage.getItem('firebaseToken');
-        
-        while (true) {
-            const response = await fetch(`/packs/status/${taskId}`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error('Failed to check pack status');
-            }
-
-            const data = await response.json();
-            
-            if (data.status === 'completed') {
-                displayPackResults(data.result);
-                break;
-            } else if (data.status === 'failed') {
-                throw new Error(data.error || 'Pack opening failed');
-            }
-
-            // Wait before polling again
-            await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-    } catch (error) {
-        console.error('Error checking pack status:', error);
-        alert(error.message);
-        closePackModal();
-    }
+function getRarityColor(rarity) {
+    const colors = {
+        'Mythic Rare': 'from-orange-600 to-red-600',
+        'Rare': 'from-yellow-500 to-yellow-600',
+        'Uncommon': 'from-blue-500 to-blue-600',
+        'Common': 'from-gray-500 to-gray-600'
+    };
+    return colors[rarity] || 'from-gray-500 to-gray-600';
 }
 
 function displayPackResults(result) {
@@ -137,31 +581,54 @@ function displayPackResults(result) {
     const resultDiv = document.getElementById('packResult');
     const cardList = document.getElementById('cardList');
     
-    // Clear previous results
     cardList.innerHTML = '';
     
-    // Add each card to the result
-    result.cards.forEach(card => {
+    result.cards.forEach((card, index) => {
         const cardElement = document.createElement('div');
-        cardElement.className = 'flex items-center justify-between p-2 bg-gray-50 rounded';
+        cardElement.className = `card-reveal bg-gradient-to-r ${getRarityColor(card.rarity)} text-white p-4 rounded-lg`;
+        cardElement.style.animationDelay = `${index * 150}ms`;
         cardElement.innerHTML = `
-            <span class="font-medium">${card.name}</span>
-            <span class="text-sm text-gray-600">${card.rarity}</span>
+            <div class="flex items-center justify-between">
+                <span class="font-medium">${card.name}</span>
+                <span class="text-sm opacity-75">${card.rarity}</span>
+            </div>
         `;
         cardList.appendChild(cardElement);
     });
     
-    // Show results
     content.classList.add('hidden');
     resultDiv.classList.remove('hidden');
     
-    // Update credit balance
-    updateCreditBalance();
+    showToast('Pack opened successfully!', false);
 }
 
 function closePackModal() {
     const modal = document.getElementById('packModal');
     modal.classList.add('hidden');
 }
+
+// Fetch initial credit balance
+async function fetchCreditBalance() {
+    try {
+        const token = localStorage.getItem('firebaseToken');
+        if (!token) return;
+        
+        const response = await fetch('/credits/balance', {
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+        
+        if (response.ok) {
+            const data = await response.json();
+            updateCreditDisplay(data.credits);
+        }
+    } catch (error) {
+        console.error('Error fetching credit balance:', error);
+    }
+}
+
+// Fetch initial credit balance when page loads
+fetchCreditBalance();
 </script>
 {% endblock %}

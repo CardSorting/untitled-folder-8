@@ -703,6 +703,36 @@ async def get_pack_status(
         logger.error(f"Error getting pack status: {e}")
         raise HTTPException(status_code=500, detail="Error getting pack status")
 
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket, token: str):
+    """WebSocket endpoint for real-time updates."""
+    try:
+        # Verify token and get user
+        decoded_token = verify_id_token(token)
+        user_id = decoded_token.get("uid")
+        
+        if not user_id:
+            await websocket.close(code=1008)  # Policy violation
+            return
+        
+        # Connect to WebSocket manager
+        await websocket_manager.connect(websocket, user_id)
+        
+        try:
+            while True:
+                # Keep connection alive and handle any incoming messages
+                data = await websocket.receive_text()
+                
+                # You could handle incoming messages here if needed
+                # For now, we're only using WebSocket for server->client communication
+                
+        except WebSocketDisconnect:
+            websocket_manager.disconnect(websocket, user_id)
+    
+    except Exception as e:
+        logger.error(f"WebSocket error: {e}")
+        await websocket.close(code=1011)  # Internal error
+
 # Add packs to protected routes
 protectedRoutes = ['/generate', '/cards', '/packs']
 

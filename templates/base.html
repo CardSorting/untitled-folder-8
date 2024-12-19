@@ -23,26 +23,20 @@
         }
     </style>
     <script>
-        // Credit balance update throttling
-        let lastCreditUpdate = 0;
-        const CREDIT_UPDATE_INTERVAL = 30000; // 30 seconds
-        let creditUpdateInterval = null;
+        let lastBalanceUpdate = 0;
+        const UPDATE_INTERVAL = 5000; // Minimum time between updates (5 seconds)
 
         // Function to fetch and update credit balance
         async function updateCreditBalance(force = false) {
             const now = Date.now();
-            if (!force && now - lastCreditUpdate < CREDIT_UPDATE_INTERVAL) {
-                return; // Skip if not forced and updated recently
+            // Skip update if not forced and last update was too recent
+            if (!force && now - lastBalanceUpdate < UPDATE_INTERVAL) {
+                return;
             }
 
             try {
-                // Get current user
-                const user = firebase.auth().currentUser;
-                if (!user) return;
-
-                // Get fresh token
-                const token = await user.getIdToken(true);
-                localStorage.setItem('firebaseToken', token);
+                const token = localStorage.getItem('firebaseToken');
+                if (!token) return;
 
                 const response = await fetch('/credits/balance', {
                     headers: {
@@ -56,112 +50,63 @@
 
                 const data = await response.json();
                 document.getElementById('credit-balance').textContent = data.credits;
-                lastCreditUpdate = now;
+                lastBalanceUpdate = now;
             } catch (error) {
                 console.error('Error fetching credit balance:', error);
             }
         }
 
-        // Function to verify token validity
-        async function verifyToken(token) {
-            const lastVerified = localStorage.getItem('tokenLastVerified');
-            const now = Date.now();
-            
-            // Only verify if we haven't verified in the last minute
-            if (lastVerified && now - parseInt(lastVerified) < 60000) {
-                return true;
-            }
+        // Custom event for credit balance updates
+        const creditUpdateEvent = new Event('creditUpdate');
+        document.addEventListener('creditUpdate', () => updateCreditBalance(true));
 
+        async function generateCard(rarity = null) {
             try {
-                const response = await fetch('/credits/balance', {
+                const formData = new FormData();
+                if (rarity) {
+                    formData.append('rarity', rarity);
+                }
+
+                const token = localStorage.getItem('firebaseToken');
+                if (!token) {
+                    throw new Error('Not authenticated');
+                }
+
+                const response = await fetch('/generate-card', {
+                    method: 'POST',
+                    body: formData,
                     headers: {
+                        // Explicitly set content type for multipart form data
+                        'Content-Type': 'multipart/form-data; boundary=' + generateBoundary(),
                         'Authorization': `Bearer ${token}`
                     }
                 });
 
-                if (response.ok) {
-                    localStorage.setItem('tokenLastVerified', now.toString());
-                    // Update credits display while we're at it
-                    const data = await response.json();
-                    document.getElementById('credit-balance').textContent = data.credits;
-                    lastCreditUpdate = now; // Update last credit check time
-                    return true;
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
                 }
-                return false;
+
+                const cardData = await response.json();
+                console.log('Card generated:', cardData);
+                
+                // Redirect to the card's page
+                window.location.href = `/cards/${cardData.id}`;
             } catch (error) {
-                console.error('Token verification error:', error);
-                return false;
+                console.error('Card generation error:', error);
+                alert(`Failed to generate card: ${error.message}`);
             }
         }
 
-        // Function to navigate to protected routes with auth token
-        async function navigateProtectedRoute(route) {
-            const token = localStorage.getItem('firebaseToken');
-            if (!token) {
-                window.location.href = '/auth';
-                return;
-            }
-
-            try {
-                // Verify token validity
-                if (await verifyToken(token)) {
-                    // Token is valid, proceed with navigation
-                    const pageResponse = await fetch(route, {
-                        headers: {
-                            'Authorization': `Bearer ${token}`
-                        }
-                    });
-                    
-                    if (!pageResponse.ok) {
-                        if (pageResponse.status === 401 || pageResponse.status === 403) {
-                            window.location.href = '/auth';
-                            return;
-                        }
-                        throw new Error(`HTTP error! status: ${pageResponse.status}`);
-                    }
-                    
-                    const contentType = pageResponse.headers.get('content-type');
-                    if (contentType && contentType.includes('text/html')) {
-                        const html = await pageResponse.text();
-                        document.documentElement.innerHTML = html;
-                        // Update the URL without reloading
-                        window.history.pushState({}, '', route);
-                        // Reinitialize scripts
-                        const scripts = document.getElementsByTagName('script');
-                        for (let script of scripts) {
-                            if (script.src) {
-                                const newScript = document.createElement('script');
-                                newScript.src = script.src;
-                                script.parentNode.replaceChild(newScript, script);
-                            } else if (script.textContent) {
-                                eval(script.textContent);
-                            }
-                        }
-                    } else if (pageResponse.redirected) {
-                        window.location.href = pageResponse.url;
-                    } else {
-                        window.location.href = route;
-                    }
-                } else {
-                    // Token is invalid, redirect to auth
-                    window.location.href = '/auth';
-                }
-            } catch (error) {
-                console.error('Error verifying token:', error);
-                window.location.href = '/auth';
-            }
+        // Helper function to generate a random boundary for multipart form data
+        function generateBoundary() {
+            return 'WebKitFormBoundary' + Math.random().toString(36).substring(2);
         }
 
         // Firebase Auth Management
         function handleLogout() {
-            if (creditUpdateInterval) {
-                clearInterval(creditUpdateInterval);
-                creditUpdateInterval = null;
-            }
             firebase.auth().signOut().then(() => {
                 localStorage.removeItem('firebaseToken');
-                localStorage.removeItem('tokenLastVerified');
-                document.cookie = 'firebaseToken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
                 window.location.href = '/';
             }).catch((error) => {
                 console.error('Logout error:', error);
@@ -178,6 +123,8 @@
                 loginButton.classList.add('hidden');
                 logoutButton.classList.remove('hidden');
                 authRequiredElements.forEach(el => el.classList.remove('hidden'));
+                // Update credit balance when user is authenticated
+                updateCreditBalance(true);
             } else {
                 loginButton.classList.remove('hidden');
                 logoutButton.classList.add('hidden');
@@ -186,45 +133,25 @@
         }
 
         // Protected routes that require authentication
-        const protectedRoutes = ['/collection', '/packs'];
+        const protectedRoutes = ['/generate', '/cards', '/packs'];
 
         document.addEventListener('DOMContentLoaded', function() {
             const auth = firebase.auth();
 
             // Listen for auth state changes
-            auth.onAuthStateChanged(async function(user) {
+            auth.onAuthStateChanged(function(user) {
                 updateAuthUI(user);
                 
                 if (user) {
-                    try {
-                        // Get fresh token and force refresh
-                        const token = await user.getIdToken(true);
+                    // User is signed in
+                    user.getIdToken().then(function(token) {
                         localStorage.setItem('firebaseToken', token);
-                        // Also set as cookie
-                        document.cookie = `firebaseToken=${token}; path=/; SameSite=Strict`;
-                        
-                        // Force initial credit balance update
-                        await updateCreditBalance(true);
-
-                        // Clear existing interval if any
-                        if (creditUpdateInterval) {
-                            clearInterval(creditUpdateInterval);
-                        }
-                        
-                        // Set up new interval for credit updates
-                        creditUpdateInterval = setInterval(() => updateCreditBalance(false), CREDIT_UPDATE_INTERVAL);
-                        
-                    } catch (error) {
-                        console.error('Auth state change error:', error);
-                    }
+                        // Update credit balance after getting token
+                        updateCreditBalance(true);
+                    });
                 } else {
                     // User is signed out
-                    if (creditUpdateInterval) {
-                        clearInterval(creditUpdateInterval);
-                        creditUpdateInterval = null;
-                    }
                     localStorage.removeItem('firebaseToken');
-                    localStorage.removeItem('tokenLastVerified');
                     // Only redirect to auth if trying to access protected routes
                     const currentPath = window.location.pathname;
                     if (protectedRoutes.some(route => currentPath.startsWith(route))) {
@@ -247,8 +174,9 @@
                     <span id="credit-balance" class="font-bold">0</span>
                 </div>
                 <!-- Auth-required links -->
+                <a href="/generate" class="hover:text-blue-200 auth-required hidden">Generate</a>
                 <a href="/packs" class="hover:text-blue-200 auth-required hidden">Buy Packs</a>
-                <a href="/collection" class="hover:text-blue-200 auth-required hidden">My Collection</a>
+                <a href="/cards" class="hover:text-blue-200 auth-required hidden">Card Library</a>
                 <!-- Auth links -->
                 <a href="/auth" class="hover:text-blue-200 auth-login">Login</a>
                 <button class="hover:text-blue-200 auth-logout hidden" onclick="handleLogout()">Logout</button>
