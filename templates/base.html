@@ -23,17 +23,45 @@
         }
     </style>
     <script>
-        let lastBalanceUpdate = 0;
-        const UPDATE_INTERVAL = 5000; // Minimum time between updates (5 seconds)
+        let ws = null;
 
-        // Function to fetch and update credit balance
-        async function updateCreditBalance(force = false) {
-            const now = Date.now();
-            // Skip update if not forced and last update was too recent
-            if (!force && now - lastBalanceUpdate < UPDATE_INTERVAL) {
-                return;
+        function connectWebSocket() {
+            const token = localStorage.getItem('firebaseToken');
+            if (!token) return;
+
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws?token=${token}`;
+            
+            ws = new WebSocket(wsUrl);
+            
+            ws.onmessage = (event) => {
+                const data = JSON.parse(event.data);
+                
+                if (data.type === 'credit_update') {
+                    updateCreditDisplay(data.credits);
+                }
+            };
+            
+            ws.onclose = () => {
+                // Try to reconnect after a delay
+                setTimeout(connectWebSocket, 5000);
+            };
+            
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+        }
+
+        // Update credit display in the UI
+        function updateCreditDisplay(credits) {
+            const creditBalance = document.getElementById('credit-balance');
+            if (creditBalance) {
+                creditBalance.textContent = credits;
             }
+        }
 
+        // Initial credit balance fetch
+        async function fetchInitialBalance() {
             try {
                 const token = localStorage.getItem('firebaseToken');
                 if (!token) return;
@@ -44,21 +72,14 @@
                     }
                 });
 
-                if (!response.ok) {
-                    throw new Error('Failed to fetch credit balance');
+                if (response.ok) {
+                    const data = await response.json();
+                    updateCreditDisplay(data.credits);
                 }
-
-                const data = await response.json();
-                document.getElementById('credit-balance').textContent = data.credits;
-                lastBalanceUpdate = now;
             } catch (error) {
-                console.error('Error fetching credit balance:', error);
+                console.error('Error fetching initial credit balance:', error);
             }
         }
-
-        // Custom event for credit balance updates
-        const creditUpdateEvent = new Event('creditUpdate');
-        document.addEventListener('creditUpdate', () => updateCreditBalance(true));
 
         async function generateCard(rarity = null) {
             try {
@@ -123,8 +144,8 @@
                 loginButton.classList.add('hidden');
                 logoutButton.classList.remove('hidden');
                 authRequiredElements.forEach(el => el.classList.remove('hidden'));
-                // Update credit balance when user is authenticated
-                updateCreditBalance(true);
+                // Only fetch initial balance, WebSocket will be connected after token is set
+                fetchInitialBalance();
             } else {
                 loginButton.classList.remove('hidden');
                 logoutButton.classList.add('hidden');
@@ -146,8 +167,8 @@
                     // User is signed in
                     user.getIdToken().then(function(token) {
                         localStorage.setItem('firebaseToken', token);
-                        // Update credit balance after getting token
-                        updateCreditBalance(true);
+                    // Connect WebSocket after token is set
+                    connectWebSocket();
                     });
                 } else {
                     // User is signed out
