@@ -123,22 +123,18 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)):
     """
     try:
         authorization = request.headers.get("Authorization")
-        logger.debug(f"Authorization header: {authorization}")
+        logger.debug("Checking authorization header")
         
         if not authorization or not authorization.startswith("Bearer "):
             logger.debug("No valid Authorization header found")
             return None
 
         token = authorization.split(" ")[1]
-        logger.debug("Attempting to verify token")
-        
         decoded_token = verify_id_token(token)
-        logger.debug(f"Token decoded successfully: {decoded_token}")
-        
         user_id = decoded_token.get("uid")
         email = decoded_token.get("email")
         
-        logger.debug(f"Extracted user_id: {user_id}, email: {email}")
+        logger.debug("Token verification successful")
         
         if not user_id:
             logger.debug("No user_id found in token")
@@ -157,7 +153,7 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)):
         logger.error(f"Error verifying Firebase token: {str(e)}")
         logger.error(f"Error type: {type(e)}")
         logger.error(f"Traceback: {traceback.format_exc()}")
-        logger.error(f"Token being verified: {token if 'token' in locals() else 'No token'}")
+        logger.error("Token verification failed")
         return None
 
 @app.get("/", response_class=HTMLResponse)
@@ -705,33 +701,38 @@ async def get_pack_status(
         raise HTTPException(status_code=500, detail="Error getting pack status")
 
 @app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket, token: str):
+async def websocket_endpoint(websocket: WebSocket):
     """WebSocket endpoint for real-time updates."""
     try:
-        # Verify token and get user
-        decoded_token = verify_id_token(token)
-        user_id = decoded_token.get("uid")
+        await websocket.accept()
         
-        if not user_id:
+        # Wait for authentication message
+        auth_data = await websocket.receive_json()
+        if auth_data.get('type') != 'auth' or not auth_data.get('token'):
             await websocket.close(code=1008)  # Policy violation
             return
-        
-        # Connect to WebSocket manager
-        await websocket_manager.connect(websocket, user_id)
-        
+            
+        # Verify token and get user
         try:
+            decoded_token = verify_id_token(auth_data['token'])
+            user_id = decoded_token.get("uid")
+            
+            if not user_id:
+                await websocket.close(code=1008)  # Policy violation
+                return
+            
+            # Connect to WebSocket manager
+            await websocket_manager.connect(websocket, user_id)
+            
+            # Keep connection alive and handle any incoming messages
             while True:
-                # Keep connection alive and handle any incoming messages
-                data = await websocket.receive_text()
-                
-                # You could handle incoming messages here if needed
-                # For now, we're only using WebSocket for server->client communication
+                await websocket.receive_text()  # Keep connection alive
                 
         except WebSocketDisconnect:
             websocket_manager.disconnect(websocket, user_id)
-    
+            
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+        logger.error("WebSocket error")  # Don't log the actual error to avoid token exposure
         await websocket.close(code=1011)  # Internal error
 
 # Add packs to protected routes

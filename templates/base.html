@@ -30,9 +30,14 @@
             if (!token) return;
 
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws?token=${token}`;
+            const wsUrl = `${protocol}//${window.location.host}/ws`;
             
             ws = new WebSocket(wsUrl);
+            
+            // Send token in first message after connection
+            ws.onopen = () => {
+                ws.send(JSON.stringify({ type: 'auth', token }));
+            };
             
             ws.onmessage = (event) => {
                 const data = JSON.parse(event.data);
