@@ -160,7 +160,7 @@
         }
 
         // Protected routes that require authentication
-        const protectedRoutes = ['/generate', '/cards', '/packs'];
+        const protectedRoutes = ['/cards', '/packs'];
 
         document.addEventListener('DOMContentLoaded', function() {
             const auth = firebase.auth();
@@ -201,7 +201,6 @@
                     <span id="credit-balance" class="font-bold">0</span>
                 </div>
                 <!-- Auth-required links -->
-                <a href="/generate" class="hover:text-blue-200 auth-required hidden">Generate</a>
                 <a href="/packs" class="hover:text-blue-200 auth-required hidden">Buy Packs</a>
                 <a href="/cards" class="hover:text-blue-200 auth-required hidden">Card Library</a>
                 <!-- Auth links -->
