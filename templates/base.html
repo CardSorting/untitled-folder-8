@@ -23,8 +23,18 @@
         }
     </style>
     <script>
+        // Credit balance update throttling
+        let lastCreditUpdate = 0;
+        const CREDIT_UPDATE_INTERVAL = 30000; // 30 seconds
+        let creditUpdateInterval = null;
+
         // Function to fetch and update credit balance
-        async function updateCreditBalance() {
+        async function updateCreditBalance(force = false) {
+            const now = Date.now();
+            if (!force && now - lastCreditUpdate < CREDIT_UPDATE_INTERVAL) {
+                return; // Skip if not forced and updated recently
+            }
+
             try {
                 // Get current user
                 const user = firebase.auth().currentUser;
@@ -46,85 +56,43 @@
 
                 const data = await response.json();
                 document.getElementById('credit-balance').textContent = data.credits;
+                lastCreditUpdate = now;
             } catch (error) {
                 console.error('Error fetching credit balance:', error);
             }
         }
 
-        async function generateCard(rarity = null) {
+        // Function to verify token validity
+        async function verifyToken(token) {
+            const lastVerified = localStorage.getItem('tokenLastVerified');
+            const now = Date.now();
+            
+            // Only verify if we haven't verified in the last minute
+            if (lastVerified && now - parseInt(lastVerified) < 60000) {
+                return true;
+            }
+
             try {
-                const formData = new FormData();
-                if (rarity) {
-                    formData.append('rarity', rarity);
-                }
-
-                const token = localStorage.getItem('firebaseToken');
-                if (!token) {
-                    throw new Error('Not authenticated');
-                }
-
-                const response = await fetch('/generate-card', {
-                    method: 'POST',
-                    body: formData,
+                const response = await fetch('/credits/balance', {
                     headers: {
-                        // Explicitly set content type for multipart form data
-                        'Content-Type': 'multipart/form-data; boundary=' + generateBoundary(),
                         'Authorization': `Bearer ${token}`
                     }
                 });
 
-                if (!response.ok) {
-                    const errorText = await response.text();
-                    throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+                if (response.ok) {
+                    localStorage.setItem('tokenLastVerified', now.toString());
+                    // Update credits display while we're at it
+                    const data = await response.json();
+                    document.getElementById('credit-balance').textContent = data.credits;
+                    lastCreditUpdate = now; // Update last credit check time
+                    return true;
                 }
-
-                const cardData = await response.json();
-                console.log('Card generated:', cardData);
-                
-                // Redirect to the card's page
-                window.location.href = `/cards/${cardData.id}`;
+                return false;
             } catch (error) {
-                console.error('Card generation error:', error);
-                alert(`Failed to generate card: ${error.message}`);
+                console.error('Token verification error:', error);
+                return false;
             }
         }
-
-        // Helper function to generate a random boundary for multipart form data
-        function generateBoundary() {
-            return 'WebKitFormBoundary' + Math.random().toString(36).substring(2);
-        }
-
-        // Firebase Auth Management
-        function handleLogout() {
-            firebase.auth().signOut().then(() => {
-                localStorage.removeItem('firebaseToken');
-                window.location.href = '/';
-            }).catch((error) => {
-                console.error('Logout error:', error);
-                alert('Failed to log out');
-            });
-        }
-
-        function updateAuthUI(user) {
-            const loginButton = document.querySelector('.auth-login');
-            const logoutButton = document.querySelector('.auth-logout');
-            const authRequiredElements = document.querySelectorAll('.auth-required');
-            
-            if (user) {
-                loginButton.classList.add('hidden');
-                logoutButton.classList.remove('hidden');
-                authRequiredElements.forEach(el => el.classList.remove('hidden'));
-                // Update credit balance when user is authenticated
-                updateCreditBalance();
-            } else {
-                loginButton.classList.remove('hidden');
-                logoutButton.classList.add('hidden');
-                authRequiredElements.forEach(el => el.classList.add('hidden'));
-            }
-        }
-
-        // Protected routes that require authentication
-        const protectedRoutes = ['/collection', '/packs'];
 
         // Function to navigate to protected routes with auth token
         async function navigateProtectedRoute(route) {
@@ -135,16 +103,9 @@
             }
 
             try {
-                // First verify the token is still valid by making a test request
-                const response = await fetch('/credits/balance', {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-
-                if (response.ok) {
-                    // Token is valid, proceed with navigation with token
-                    // Use fetch to make a GET request with the token
+                // Verify token validity
+                if (await verifyToken(token)) {
+                    // Token is valid, proceed with navigation
                     const pageResponse = await fetch(route, {
                         headers: {
                             'Authorization': `Bearer ${token}`
@@ -191,6 +152,41 @@
             }
         }
 
+        // Firebase Auth Management
+        function handleLogout() {
+            if (creditUpdateInterval) {
+                clearInterval(creditUpdateInterval);
+                creditUpdateInterval = null;
+            }
+            firebase.auth().signOut().then(() => {
+                localStorage.removeItem('firebaseToken');
+                localStorage.removeItem('tokenLastVerified');
+                window.location.href = '/';
+            }).catch((error) => {
+                console.error('Logout error:', error);
+                alert('Failed to log out');
+            });
+        }
+
+        function updateAuthUI(user) {
+            const loginButton = document.querySelector('.auth-login');
+            const logoutButton = document.querySelector('.auth-logout');
+            const authRequiredElements = document.querySelectorAll('.auth-required');
+            
+            if (user) {
+                loginButton.classList.add('hidden');
+                logoutButton.classList.remove('hidden');
+                authRequiredElements.forEach(el => el.classList.remove('hidden'));
+            } else {
+                loginButton.classList.remove('hidden');
+                logoutButton.classList.add('hidden');
+                authRequiredElements.forEach(el => el.classList.add('hidden'));
+            }
+        }
+
+        // Protected routes that require authentication
+        const protectedRoutes = ['/collection', '/packs'];
+
         document.addEventListener('DOMContentLoaded', function() {
             const auth = firebase.auth();
 
@@ -204,24 +200,28 @@
                         const token = await user.getIdToken(true);
                         localStorage.setItem('firebaseToken', token);
                         
-                        // Set up token refresh
-                        setInterval(async () => {
-                            try {
-                                const freshToken = await user.getIdToken(true);
-                                localStorage.setItem('firebaseToken', freshToken);
-                            } catch (error) {
-                                console.error('Token refresh error:', error);
-                            }
-                        }, 3600000); // Refresh token every hour
+                        // Force initial credit balance update
+                        await updateCreditBalance(true);
+
+                        // Clear existing interval if any
+                        if (creditUpdateInterval) {
+                            clearInterval(creditUpdateInterval);
+                        }
                         
-                        // Update credit balance after getting token
-                        await updateCreditBalance();
+                        // Set up new interval for credit updates
+                        creditUpdateInterval = setInterval(() => updateCreditBalance(false), CREDIT_UPDATE_INTERVAL);
+                        
                     } catch (error) {
                         console.error('Auth state change error:', error);
                     }
                 } else {
                     // User is signed out
+                    if (creditUpdateInterval) {
+                        clearInterval(creditUpdateInterval);
+                        creditUpdateInterval = null;
+                    }
                     localStorage.removeItem('firebaseToken');
+                    localStorage.removeItem('tokenLastVerified');
                     // Only redirect to auth if trying to access protected routes
                     const currentPath = window.location.pathname;
                     if (protectedRoutes.some(route => currentPath.startsWith(route))) {
@@ -229,11 +229,6 @@
                     }
                 }
             });
-
-            // Update credit balance periodically
-            if (auth.currentUser) {
-                setInterval(updateCreditBalance, 30000); // Update every 30 seconds
-            }
         });
     </script>
     {% block head %}{% endblock %}
