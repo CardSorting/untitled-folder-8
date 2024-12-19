@@ -155,6 +155,8 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)):
         logger.error(f"Traceback: {traceback.format_exc()}")
         logger.error("Token verification failed")
         return None
+    finally:
+        pass
 
 @app.get("/", response_class=HTMLResponse)
 async def landing_page(request: Request, context: dict = Depends(get_template_context)):
@@ -288,11 +290,16 @@ async def create_card(
             
             logger.info(f"Card generated successfully: {db_card.name}")
             
-            # Prepare response
+            # Prepare response with all required fields
             response_content = {
                 "id": db_card.id,
                 "name": db_card.name,
+                "manaCost": db_card.card_data.get('manaCost'),
+                "type": db_card.card_data.get('type'),
+                "text": db_card.card_data.get('text'),
                 "rarity": db_card.rarity,
+                "power": db_card.card_data.get('power'),
+                "toughness": db_card.card_data.get('toughness'),
                 "set_name": db_card.set_name,
                 "card_number": db_card.card_number,
                 "image_path": db_card.image_path

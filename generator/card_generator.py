@@ -106,10 +106,22 @@ def generate_card(rarity: str = None) -> Dict[str, Any]:
             dalle_url, b2_url = generate_card_image(card_data)
             
             # If we got here, both card data and image generation succeeded
-            card_data['dalle_url'] = dalle_url
-            card_data['b2_url'] = b2_url
-            
-            return card_data
+            final_card_data = {
+                'id': card_data.get('id'),
+                'name': card_data['name'],
+                'manaCost': card_data['manaCost'],
+                'type': card_data['type'],
+                'text': card_data['text'],
+                'rarity': card_data['rarity'],
+                'power': card_data.get('power'),
+                'toughness': card_data.get('toughness'),
+                'set_name': card_data['set_name'],
+                'card_number': card_data['card_number'],
+                'dalle_url': dalle_url,
+                'b2_url': b2_url,
+                'image_path': b2_url
+            }
+            return final_card_data
             
         except Exception as img_error:
             logger.error(f"Error during image generation: {img_error}")
