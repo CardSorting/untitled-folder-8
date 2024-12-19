@@ -124,7 +124,36 @@
         }
 
         // Protected routes that require authentication
-        const protectedRoutes = ['/cards'];
+        const protectedRoutes = ['/cards', '/packs'];
+
+        // Function to navigate to protected routes with auth token
+        async function navigateProtectedRoute(route) {
+            const token = localStorage.getItem('firebaseToken');
+            if (!token) {
+                window.location.href = '/auth';
+                return;
+            }
+
+            try {
+                // First verify the token is still valid by making a test request
+                const response = await fetch('/credits/balance', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (response.ok) {
+                    // Token is valid, proceed with navigation
+                    window.location.href = route;
+                } else {
+                    // Token is invalid, redirect to auth
+                    window.location.href = '/auth';
+                }
+            } catch (error) {
+                console.error('Error verifying token:', error);
+                window.location.href = '/auth';
+            }
+        }
 
         document.addEventListener('DOMContentLoaded', function() {
             const auth = firebase.auth();
@@ -184,8 +213,8 @@
                     <span id="credit-balance" class="font-bold">0</span>
                 </div>
                 <!-- Auth-required links -->
-                <a href="/packs" class="hover:text-blue-200 auth-required hidden">Buy Packs</a>
-                <a href="/cards" class="hover:text-blue-200 auth-required hidden">Card Library</a>
+                <a href="#" onclick="navigateProtectedRoute('/packs'); return false;" class="hover:text-blue-200 auth-required hidden">Buy Packs</a>
+                <a href="#" onclick="navigateProtectedRoute('/cards'); return false;" class="hover:text-blue-200 auth-required hidden">Card Library</a>
                 <!-- Auth links -->
                 <a href="/auth" class="hover:text-blue-200 auth-login">Login</a>
                 <button class="hover:text-blue-200 auth-logout hidden" onclick="handleLogout()">Logout</button>
