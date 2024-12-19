@@ -124,7 +124,7 @@
         }
 
         // Protected routes that require authentication
-        const protectedRoutes = ['/cards', '/packs'];
+        const protectedRoutes = ['/collection', '/packs'];
 
         // Function to navigate to protected routes with auth token
         async function navigateProtectedRoute(route) {
@@ -143,8 +143,44 @@
                 });
 
                 if (response.ok) {
-                    // Token is valid, proceed with navigation
-                    window.location.href = route;
+                    // Token is valid, proceed with navigation with token
+                    // Use fetch to make a GET request with the token
+                    const pageResponse = await fetch(route, {
+                        headers: {
+                            'Authorization': `Bearer ${token}`
+                        }
+                    });
+                    
+                    if (!pageResponse.ok) {
+                        if (pageResponse.status === 401 || pageResponse.status === 403) {
+                            window.location.href = '/auth';
+                            return;
+                        }
+                        throw new Error(`HTTP error! status: ${pageResponse.status}`);
+                    }
+                    
+                    const contentType = pageResponse.headers.get('content-type');
+                    if (contentType && contentType.includes('text/html')) {
+                        const html = await pageResponse.text();
+                        document.documentElement.innerHTML = html;
+                        // Update the URL without reloading
+                        window.history.pushState({}, '', route);
+                        // Reinitialize scripts
+                        const scripts = document.getElementsByTagName('script');
+                        for (let script of scripts) {
+                            if (script.src) {
+                                const newScript = document.createElement('script');
+                                newScript.src = script.src;
+                                script.parentNode.replaceChild(newScript, script);
+                            } else if (script.textContent) {
+                                eval(script.textContent);
+                            }
+                        }
+                    } else if (pageResponse.redirected) {
+                        window.location.href = pageResponse.url;
+                    } else {
+                        window.location.href = route;
+                    }
                 } else {
                     // Token is invalid, redirect to auth
                     window.location.href = '/auth';
@@ -214,7 +250,7 @@
                 </div>
                 <!-- Auth-required links -->
                 <a href="#" onclick="navigateProtectedRoute('/packs'); return false;" class="hover:text-blue-200 auth-required hidden">Buy Packs</a>
-                <a href="#" onclick="navigateProtectedRoute('/cards'); return false;" class="hover:text-blue-200 auth-required hidden">Card Library</a>
+                <a href="#" onclick="navigateProtectedRoute('/collection'); return false;" class="hover:text-blue-200 auth-required hidden">My Collection</a>
                 <!-- Auth links -->
                 <a href="/auth" class="hover:text-blue-200 auth-login">Login</a>
                 <button class="hover:text-blue-200 auth-logout hidden" onclick="handleLogout()">Logout</button>

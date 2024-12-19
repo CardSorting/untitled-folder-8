@@ -335,8 +335,8 @@ def get_next_set_name_and_number() -> tuple:
     set_number = random.randint(1, 10)
     return default_set_name, set_number, random.randint(1, 999)
 
-@app.get("/cards", response_class=HTMLResponse)
-async def list_cards(
+@app.get("/collection", response_class=HTMLResponse)
+async def view_collection(
     request: Request,
     page: int = 1,
     per_page: int = 10,
@@ -360,29 +360,37 @@ async def list_cards(
     per_page = max(1, min(per_page, 50))  # Limit per page between 1 and 50
     
     try:
-        if not current_user:
+        # Get token from header
+        authorization = request.headers.get("Authorization")
+        if not authorization or not authorization.startswith("Bearer "):
             return RedirectResponse(url="/auth", status_code=303)
 
         # Calculate offset for pagination
         offset = (page - 1) * per_page
         
-        # Query user's claimed cards
-        total_cards = (
-            db.query(CardModel)
-            .filter(CardModel.user_id == current_user.firebase_id)
-            .count()
-        )
-        total_pages = (total_cards + per_page - 1) // per_page
-        
-        # Fetch user's claimed cards
-        user_cards = (
-            db.query(CardModel)
-            .filter(CardModel.user_id == current_user.firebase_id)
-            .order_by(CardModel.created_at.desc())
-            .offset(offset)
-            .limit(per_page)
-            .all()
-        )
+        try:
+            # Query user's claimed cards
+            total_cards = (
+                db.query(CardModel)
+                .filter(CardModel.user_id == current_user.firebase_id)
+                .count()
+            )
+            total_pages = (total_cards + per_page - 1) // per_page
+            
+            # Fetch user's claimed cards
+            user_cards = (
+                db.query(CardModel)
+                .filter(CardModel.user_id == current_user.firebase_id)
+                .order_by(CardModel.created_at.desc())
+                .offset(offset)
+                .limit(per_page)
+                .all()
+            )
+            logger.debug(f"Found {total_cards} cards for user {current_user.firebase_id}")
+        except Exception as e:
+            logger.error(f"Database query error: {str(e)}")
+            logger.error(f"User ID: {current_user.firebase_id}")
+            raise
         
         # Prepare card data for template
         card_list = []
@@ -412,7 +420,7 @@ async def list_cards(
             "per_page": per_page,
             "total_cards": total_cards
         })
-        return templates.TemplateResponse("cards_list.html", context)
+        return templates.TemplateResponse("collection.html", context)
     
     except Exception as e:
         logger.error(f"Error retrieving user's cards: {e}")
