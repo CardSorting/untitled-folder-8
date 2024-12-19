@@ -5,6 +5,7 @@ import logging
 from collections import deque
 from dataclasses import dataclass
 import uuid
+from websocket_manager import websocket_manager
 
 logger = logging.getLogger(__name__)
 
