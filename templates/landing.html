@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="min-h-screen">
+    <!-- Hero Section -->
+    <div class="text-center py-16 px-4">
+        <h1 class="text-4xl md:text-5xl lg:text-6xl font-bold text-gray-800 mb-6">
+            Welcome to Magic Card Generator
+        </h1>
+        <p class="text-xl md:text-2xl text-gray-600 mb-8">
+            Create unique and powerful Magic cards using AI technology
+        </p>
+        <a href="/auth" class="bg-blue-600 text-white px-8 py-3 rounded-lg text-lg font-semibold hover:bg-blue-700 transition-colors">
+            Get Started
+        </a>
+    </div>
+
+    <!-- Features Section -->
+    <div class="max-w-7xl mx-auto px-4 py-16">
+        <h2 class="text-3xl font-bold text-center text-gray-800 mb-12">Features</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <!-- Feature 1 -->
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <h3 class="text-xl font-semibold text-gray-800 mb-4">AI-Powered Generation</h3>
+                <p class="text-gray-600">
+                    Create unique cards using advanced AI technology that understands Magic: The Gathering mechanics and lore.
+                </p>
+            </div>
+            <!-- Feature 2 -->
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <h3 class="text-xl font-semibold text-gray-800 mb-4">Custom Card Library</h3>
+                <p class="text-gray-600">
+                    Build and manage your personal collection of generated cards with easy organization and access.
+                </p>
+            </div>
+            <!-- Feature 3 -->
+            <div class="bg-white p-6 rounded-lg shadow-lg">
+                <h3 class="text-xl font-semibold text-gray-800 mb-4">Interactive Design</h3>
+                <p class="text-gray-600">
+                    Experience cards with stunning visual effects and interactive 3D animations.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Call to Action -->
+    <div class="bg-blue-600 text-white text-center py-16 px-4">
+        <h2 class="text-3xl font-bold mb-4">Ready to Create Your Own Cards?</h2>
+        <p class="text-xl mb-8">Join now and start generating unique Magic cards instantly.</p>
+        <a href="/auth" class="bg-white text-blue-600 px-8 py-3 rounded-lg text-lg font-semibold hover:bg-gray-100 transition-colors">
+            Sign Up Now
+        </a>
+    </div>
+</div>
+{% endblock %}

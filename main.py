@@ -133,8 +133,13 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)):
         return None
 
 @app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request, context: dict = Depends(get_template_context)):
-    """Render the main page for card generation."""
+async def landing_page(request: Request, context: dict = Depends(get_template_context)):
+    """Render the landing page."""
+    return templates.TemplateResponse("landing.html", context)
+
+@app.get("/generate", response_class=HTMLResponse)
+async def generate_page(request: Request, context: dict = Depends(get_template_context)):
+    """Render the card generation page."""
     return templates.TemplateResponse("index.html", context)
 
 @app.get("/auth", response_class=HTMLResponse)

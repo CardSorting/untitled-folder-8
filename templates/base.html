@@ -65,27 +65,60 @@
         function generateBoundary() {
             return 'WebKitFormBoundary' + Math.random().toString(36).substring(2);
         }
-    </script>
-    <script>
-      // Initialize Firebase Auth
-      document.addEventListener('DOMContentLoaded', function() {
-        const auth = firebase.auth();
 
-        // Listen for auth state changes
-        auth.onAuthStateChanged(function(user) {
-          if (user && !window.location.pathname.includes('/auth')) {
-            // User is signed in and not on auth page
-            user.getIdToken().then(function(token) {
-              // Store the token for API requests
-              localStorage.setItem('firebaseToken', token);
+        // Firebase Auth Management
+        function handleLogout() {
+            firebase.auth().signOut().then(() => {
+                localStorage.removeItem('firebaseToken');
+                window.location.href = '/';
+            }).catch((error) => {
+                console.error('Logout error:', error);
+                alert('Failed to log out');
             });
-          } else if (!user && !window.location.pathname.includes('/auth')) {
-            // User is signed out and not on auth page
-            localStorage.removeItem('firebaseToken');
-            window.location.href = '/auth';
-          }
+        }
+
+        function updateAuthUI(user) {
+            const loginButton = document.querySelector('.auth-login');
+            const logoutButton = document.querySelector('.auth-logout');
+            const authRequiredElements = document.querySelectorAll('.auth-required');
+            
+            if (user) {
+                loginButton.classList.add('hidden');
+                logoutButton.classList.remove('hidden');
+                authRequiredElements.forEach(el => el.classList.remove('hidden'));
+            } else {
+                loginButton.classList.remove('hidden');
+                logoutButton.classList.add('hidden');
+                authRequiredElements.forEach(el => el.classList.add('hidden'));
+            }
+        }
+
+        // Protected routes that require authentication
+        const protectedRoutes = ['/generate', '/cards'];
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const auth = firebase.auth();
+
+            // Listen for auth state changes
+            auth.onAuthStateChanged(function(user) {
+                updateAuthUI(user);
+                
+                if (user) {
+                    // User is signed in
+                    user.getIdToken().then(function(token) {
+                        localStorage.setItem('firebaseToken', token);
+                    });
+                } else {
+                    // User is signed out
+                    localStorage.removeItem('firebaseToken');
+                    // Only redirect to auth if trying to access protected routes
+                    const currentPath = window.location.pathname;
+                    if (protectedRoutes.some(route => currentPath.startsWith(route))) {
+                        window.location.href = '/auth';
+                    }
+                }
+            });
         });
-      });
     </script>
     {% block head %}{% endblock %}
 </head>
@@ -94,9 +127,12 @@
         <div class="container mx-auto flex justify-between items-center">
             <a href="/" class="text-2xl font-bold md:text-3xl lg:text-4xl">Magic Card Generator</a>
             <div class="flex items-center space-x-4 md:space-x-6 lg:space-x-8">
-                <a href="/" class="hover:text-blue-200">Generate</a>
-                <a href="/cards" class="hover:text-blue-200">Card Library</a>
-                <a href="/auth" class="hover:text-blue-200">Login</a>
+                <!-- Auth-required links -->
+                <a href="/generate" class="hover:text-blue-200 auth-required hidden">Generate</a>
+                <a href="/cards" class="hover:text-blue-200 auth-required hidden">Card Library</a>
+                <!-- Auth links -->
+                <a href="/auth" class="hover:text-blue-200 auth-login">Login</a>
+                <button class="hover:text-blue-200 auth-logout hidden" onclick="handleLogout()">Logout</button>
             </div>
         </div>
     </nav>
