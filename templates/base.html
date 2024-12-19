@@ -26,8 +26,13 @@
         // Function to fetch and update credit balance
         async function updateCreditBalance() {
             try {
-                const token = localStorage.getItem('firebaseToken');
-                if (!token) return;
+                // Get current user
+                const user = firebase.auth().currentUser;
+                if (!user) return;
+
+                // Get fresh token
+                const token = await user.getIdToken(true);
+                localStorage.setItem('firebaseToken', token);
 
                 const response = await fetch('/credits/balance', {
                     headers: {
@@ -119,22 +124,36 @@
         }
 
         // Protected routes that require authentication
-        const protectedRoutes = ['/generate', '/cards'];
+        const protectedRoutes = ['/cards'];
 
         document.addEventListener('DOMContentLoaded', function() {
             const auth = firebase.auth();
 
             // Listen for auth state changes
-            auth.onAuthStateChanged(function(user) {
+            auth.onAuthStateChanged(async function(user) {
                 updateAuthUI(user);
                 
                 if (user) {
-                    // User is signed in
-                    user.getIdToken().then(function(token) {
+                    try {
+                        // Get fresh token and force refresh
+                        const token = await user.getIdToken(true);
                         localStorage.setItem('firebaseToken', token);
+                        
+                        // Set up token refresh
+                        setInterval(async () => {
+                            try {
+                                const freshToken = await user.getIdToken(true);
+                                localStorage.setItem('firebaseToken', freshToken);
+                            } catch (error) {
+                                console.error('Token refresh error:', error);
+                            }
+                        }, 3600000); // Refresh token every hour
+                        
                         // Update credit balance after getting token
-                        updateCreditBalance();
-                    });
+                        await updateCreditBalance();
+                    } catch (error) {
+                        console.error('Auth state change error:', error);
+                    }
                 } else {
                     // User is signed out
                     localStorage.removeItem('firebaseToken');
@@ -165,7 +184,6 @@
                     <span id="credit-balance" class="font-bold">0</span>
                 </div>
                 <!-- Auth-required links -->
-                <a href="/generate" class="hover:text-blue-200 auth-required hidden">Generate</a>
                 <a href="/packs" class="hover:text-blue-200 auth-required hidden">Buy Packs</a>
                 <a href="/cards" class="hover:text-blue-200 auth-required hidden">Card Library</a>
                 <!-- Auth links -->

@@ -8,7 +8,8 @@ import re
 from datetime import datetime
 import json
 import firebase_admin
-from firebase_admin import credentials, auth
+from firebase_admin import credentials
+from firebase_admin.auth import verify_id_token
 
 from fastapi import FastAPI, Request, Form, HTTPException, Depends
 from fastapi.templating import Jinja2Templates
@@ -49,17 +50,48 @@ MAX_GENERATIONS_PER_HOUR = int(os.getenv('MAX_GENERATIONS_PER_HOUR', 10))
 # Initialize database
 init_db()
 
-# FastAPI App
-app = FastAPI(title="Magic Card Generator")
+from contextlib import asynccontextmanager
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan context manager for FastAPI application startup and shutdown events."""
+    # Startup: Start the task manager
+    await task_manager.start()
+    yield
+    # Shutdown: Stop the task manager
+    await task_manager.stop()
+
+# FastAPI App with lifespan
+app = FastAPI(
+    title="Magic Card Generator",
+    lifespan=lifespan
+)
 
 # Setup static files and templates
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
 # Initialize Firebase Admin SDK
-cred = credentials.Certificate(os.getenv('FIREBASE_SERVICE_ACCOUNT_PATH'))
-firebase_admin.initialize_app(cred)
+try:
+    # Try to get default app if already initialized
+    default_app = firebase_admin.get_app()
+    logger.info("Firebase Admin SDK already initialized")
+except ValueError:
+    # Initialize if not already done
+    cred_path = os.getenv('FIREBASE_SERVICE_ACCOUNT_PATH')
+    if not cred_path:
+        raise ValueError("FIREBASE_SERVICE_ACCOUNT_PATH environment variable not set")
+    if not os.path.exists(cred_path):
+        raise FileNotFoundError(f"Firebase credentials file not found at: {cred_path}")
+    
+    try:
+        cred = credentials.Certificate(cred_path)
+        default_app = firebase_admin.initialize_app(cred)
+        logger.info("Firebase Admin SDK initialized successfully")
+    except Exception as e:
+        logger.error(f"Failed to initialize Firebase Admin SDK: {str(e)}")
+        logger.error(f"Credentials path: {cred_path}")
+        raise
 
 # Template context dependency
 async def get_template_context(request: Request):
@@ -88,18 +120,27 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)):
     """
     Verify the Firebase JWT token and retrieve the current user.
     """
-    authorization = request.headers.get("Authorization")
-    if not authorization or not authorization.startswith("Bearer "):
-        return None
-
     try:
+        authorization = request.headers.get("Authorization")
+        logger.debug(f"Authorization header: {authorization}")
+        
+        if not authorization or not authorization.startswith("Bearer "):
+            logger.debug("No valid Authorization header found")
+            return None
+
         token = authorization.split(" ")[1]
-        decoded_token = auth.verify_id_token(token)
+        logger.debug("Attempting to verify token")
+        
+        decoded_token = verify_id_token(token)
+        logger.debug(f"Token decoded successfully: {decoded_token}")
         
         user_id = decoded_token.get("uid")
         email = decoded_token.get("email")
         
+        logger.debug(f"Extracted user_id: {user_id}, email: {email}")
+        
         if not user_id:
+            logger.debug("No user_id found in token")
             return None
         
         user = db.query(UserModel).filter(UserModel.firebase_id == user_id).first()
@@ -111,7 +152,11 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)):
         
         return user
     except Exception as e:
-        logger.error(f"Error verifying Firebase token: {e}")
+        import traceback
+        logger.error(f"Error verifying Firebase token: {str(e)}")
+        logger.error(f"Error type: {type(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        logger.error(f"Token being verified: {token if 'token' in locals() else 'No token'}")
         return None
 
 @app.get("/", response_class=HTMLResponse)
@@ -292,10 +337,12 @@ def get_next_set_name_and_number() -> tuple:
 
 @app.get("/cards", response_class=HTMLResponse)
 async def list_cards(
-    request: Request, 
-    page: int = 1, 
+    request: Request,
+    page: int = 1,
     per_page: int = 10,
-    context: dict = Depends(get_template_context)
+    context: dict = Depends(get_template_context),
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db)
 ):
     """
     Retrieve and render paginated list of generated cards.
@@ -312,34 +359,34 @@ async def list_cards(
     page = max(1, page)
     per_page = max(1, min(per_page, 50))  # Limit per page between 1 and 50
     
-    # Create database session
-    db = SessionLocal()
-    
     try:
+        if not current_user:
+            return RedirectResponse(url="/auth", status_code=303)
+
         # Calculate offset for pagination
         offset = (page - 1) * per_page
         
-        # Query both claimed and unclaimed cards
+        # Query user's claimed cards
         total_cards = (
-            db.query(UnclaimedCard)
-            .filter(UnclaimedCard.is_claimed == False)
+            db.query(CardModel)
+            .filter(CardModel.user_id == current_user.firebase_id)
             .count()
         )
         total_pages = (total_cards + per_page - 1) // per_page
         
-        # Fetch unclaimed cards first
-        unclaimed_cards = (
-            db.query(UnclaimedCard)
-            .filter(UnclaimedCard.is_claimed == False)
-            .order_by(UnclaimedCard.created_at.desc())
+        # Fetch user's claimed cards
+        user_cards = (
+            db.query(CardModel)
+            .filter(CardModel.user_id == current_user.firebase_id)
+            .order_by(CardModel.created_at.desc())
             .offset(offset)
             .limit(per_page)
             .all()
         )
         
-        # Prepare unclaimed card data for template
+        # Prepare card data for template
         card_list = []
-        for card in unclaimed_cards:
+        for card in user_cards:
             card_data = {
                 'id': card.id,
                 'name': card.name,
@@ -368,11 +415,8 @@ async def list_cards(
         return templates.TemplateResponse("cards_list.html", context)
     
     except Exception as e:
-        logger.error(f"Error retrieving cards: {e}")
-        raise HTTPException(status_code=500, detail="Error retrieving card list")
-    finally:
-        # Always close the database session
-        db.close()
+        logger.error(f"Error retrieving user's cards: {e}")
+        raise HTTPException(status_code=500, detail="Error retrieving your card collection")
 
 @app.post("/cards/{card_id}/claim")
 async def claim_card(
@@ -426,15 +470,8 @@ async def claim_card(
 
 from task_manager import task_manager
 
-@app.on_event("startup")
-async def startup_event():
-    """Start the task manager when the application starts."""
-    await task_manager.start()
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    """Stop the task manager when the application shuts down."""
-    await task_manager.stop()
+# Pack opening cost
+PACK_COST = 100  # Credits required to open a pack
 
 # Pack opening cost
 PACK_COST = 100  # Credits required to open a pack

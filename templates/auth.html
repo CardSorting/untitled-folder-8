@@ -26,9 +26,11 @@
             ],
             callbacks: {
                 signInSuccessWithAuthResult: function(authResult, redirectUrl) {
-                    // User successfully signed in.
-                    // Return type determines whether we continue the redirect automatically
-                    // or whether we leave that to developer to handle.
+                    // Get the user's ID token
+                    authResult.user.getIdToken().then(function(idToken) {
+                        // Store the ID token in localStorage
+                        localStorage.setItem('firebaseToken', idToken);
+                    });
                     return true;
                 }
             },
