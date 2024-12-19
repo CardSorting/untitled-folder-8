@@ -45,7 +45,7 @@ def generate_card_image(card_data: Dict[str, Any]) -> Tuple[str, str]:
                 model="dall-e-3",
                 prompt=prompt,
                 size="1024x1024",
-                quality="hd",  # Higher quality
+                quality="standard",  # Higher quality
                 n=1,
                 style="vivid"  # Better for fantasy art
             )
