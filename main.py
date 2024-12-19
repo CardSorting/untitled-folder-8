@@ -359,11 +359,35 @@ async def view_collection(
     page = max(1, page)
     per_page = max(1, min(per_page, 50))  # Limit per page between 1 and 50
     
-    try:
-        # Get token from header
-        authorization = request.headers.get("Authorization")
-        if not authorization or not authorization.startswith("Bearer "):
+    # Get token from header or cookie
+    authorization = request.headers.get("Authorization")
+    if not authorization or not authorization.startswith("Bearer "):
+        token = request.cookies.get("firebaseToken")
+        if token:
+            authorization = f"Bearer {token}"
+        else:
+            logger.debug("No valid token found in header or cookie")
             return RedirectResponse(url="/auth", status_code=303)
+
+    try:
+        # Verify token and get user
+        token = authorization.split(" ")[1]
+        decoded_token = verify_id_token(token)
+        user_id = decoded_token.get("uid")
+        
+        if not user_id:
+            logger.debug("No user_id in token")
+            return RedirectResponse(url="/auth", status_code=303)
+            
+        # Get user from database
+        user = db.query(UserModel).filter(UserModel.firebase_id == user_id).first()
+        if not user:
+            logger.debug(f"User {user_id} not found in database")
+            return RedirectResponse(url="/auth", status_code=303)
+
+        # Validate page number
+        page = max(1, page)
+        per_page = max(1, min(per_page, 50))  # Limit per page between 1 and 50
 
         # Calculate offset for pagination
         offset = (page - 1) * per_page
@@ -372,7 +396,7 @@ async def view_collection(
             # Query user's claimed cards
             total_cards = (
                 db.query(CardModel)
-                .filter(CardModel.user_id == current_user.firebase_id)
+                .filter(CardModel.user_id == user.firebase_id)
                 .count()
             )
             total_pages = (total_cards + per_page - 1) // per_page
@@ -380,17 +404,17 @@ async def view_collection(
             # Fetch user's claimed cards
             user_cards = (
                 db.query(CardModel)
-                .filter(CardModel.user_id == current_user.firebase_id)
+                .filter(CardModel.user_id == user.firebase_id)
                 .order_by(CardModel.created_at.desc())
                 .offset(offset)
                 .limit(per_page)
                 .all()
             )
-            logger.debug(f"Found {total_cards} cards for user {current_user.firebase_id}")
+            logger.debug(f"Found {total_cards} cards for user {user.firebase_id}")
         except Exception as e:
             logger.error(f"Database query error: {str(e)}")
-            logger.error(f"User ID: {current_user.firebase_id}")
-            raise
+            logger.error(f"User ID: {user.firebase_id}")
+            raise HTTPException(status_code=500, detail="Error accessing card collection")
         
         # Prepare card data for template
         card_list = []
@@ -412,13 +436,15 @@ async def view_collection(
             }
             card_list.append(card_data)
         
-        # Render template with pagination context
+        # Update context with user and pagination data
         context.update({
             "cards": card_list,
             "current_page": page,
             "total_pages": total_pages,
             "per_page": per_page,
-            "total_cards": total_cards
+            "total_cards": total_cards,
+            "user": user,  # Add user to context for template
+            "firebase_config": context.get("firebase_config", {})  # Preserve firebase config
         })
         return templates.TemplateResponse("collection.html", context)
     

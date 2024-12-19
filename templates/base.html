@@ -161,6 +161,7 @@
             firebase.auth().signOut().then(() => {
                 localStorage.removeItem('firebaseToken');
                 localStorage.removeItem('tokenLastVerified');
+                document.cookie = 'firebaseToken=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
                 window.location.href = '/';
             }).catch((error) => {
                 console.error('Logout error:', error);
@@ -199,6 +200,8 @@
                         // Get fresh token and force refresh
                         const token = await user.getIdToken(true);
                         localStorage.setItem('firebaseToken', token);
+                        // Also set as cookie
+                        document.cookie = `firebaseToken=${token}; path=/; SameSite=Strict`;
                         
                         // Force initial credit balance update
                         await updateCreditBalance(true);
@@ -244,8 +247,8 @@
                     <span id="credit-balance" class="font-bold">0</span>
                 </div>
                 <!-- Auth-required links -->
-                <a href="#" onclick="navigateProtectedRoute('/packs'); return false;" class="hover:text-blue-200 auth-required hidden">Buy Packs</a>
-                <a href="#" onclick="navigateProtectedRoute('/collection'); return false;" class="hover:text-blue-200 auth-required hidden">My Collection</a>
+                <a href="/packs" class="hover:text-blue-200 auth-required hidden">Buy Packs</a>
+                <a href="/collection" class="hover:text-blue-200 auth-required hidden">My Collection</a>
                 <!-- Auth links -->
                 <a href="/auth" class="hover:text-blue-200 auth-login">Login</a>
                 <button class="hover:text-blue-200 auth-logout hidden" onclick="handleLogout()">Logout</button>
