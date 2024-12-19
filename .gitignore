@@ -1,0 +1,38 @@
+# Environment files
+
+# Virtual environment
+venv/
+*.venv
+.venv
+
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Logs
+*.log
+logs/
+
+# Database
+*.db
+*.sqlite3
+
+# Generated images
+generated_images/
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# macOS specific
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Miscellaneous
+.tmp/
+.cache/

@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Magic Card Generator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
+    <link rel="preload" href="/static/js/card-effects.js" as="script">
+    <script src="/static/js/card-effects.js" defer></script>
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: #f4f4f4;
+        }
+    </style>
+    <script>
+        async function generateCard(rarity = null) {
+            try {
+                const formData = new FormData();
+                if (rarity) {
+                    formData.append('rarity', rarity);
+                }
+
+                const response = await fetch('/generate-card', {
+                    method: 'POST',
+                    body: formData,
+                    headers: {
+                        // Explicitly set content type for multipart form data
+                        'Content-Type': 'multipart/form-data; boundary=' + generateBoundary()
+                    }
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
+                }
+
+                const cardData = await response.json();
+                console.log('Card generated:', cardData);
+                
+                // Redirect to the card's page
+                window.location.href = `/cards/${cardData.id}`;
+            } catch (error) {
+                console.error('Card generation error:', error);
+                alert(`Failed to generate card: ${error.message}`);
+            }
+        }
+
+        // Helper function to generate a random boundary for multipart form data
+        function generateBoundary() {
+            return 'WebKitFormBoundary' + Math.random().toString(36).substring(2);
+        }
+    </script>
+    {% block head %}{% endblock %}
+</head>
+<body class="bg-gray-100">
+    <nav class="bg-blue-600 text-white p-4 md:p-6 lg:p-8">
+        <div class="container mx-auto flex justify-between items-center">
+            <a href="/" class="text-2xl font-bold md:text-3xl lg:text-4xl">Magic Card Generator</a>
+            <div class="space-x-4 md:space-x-6 lg:space-x-8">
+                <a href="/" class="hover:text-blue-200">Generate</a>
+                <a href="/cards" class="hover:text-blue-200">Card Library</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container mx-auto p-4 md:p-6 lg:p-8">
+        {% block content %}{% endblock %}
+    </div>
+
+    <footer class="bg-gray-800 text-white p-4 mt-8 md:p-6 lg:p-8">
+        <div class="container mx-auto text-center">
+            <p>&copy; 2024 Magic Card Generator. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>

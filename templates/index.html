@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-md mx-auto bg-white p-8 rounded-lg shadow-md">
+    <h1 class="text-2xl font-bold mb-6 text-center">Magic Card Generator</h1>
+    <form id="cardGeneratorForm" class="space-y-4">
+        <div>
+            <label for="raritySelect" class="block text-sm font-medium text-gray-700">Card Rarity</label>
+            <select 
+                id="raritySelect" 
+                name="rarity" 
+                class="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"
+            >
+                <option value="">Random</option>
+                <option value="Common">Common</option>
+                <option value="Uncommon">Uncommon</option>
+                <option value="Rare">Rare</option>
+                <option value="Mythic">Mythic</option>
+            </select>
+        </div>
+        <button 
+            type="button" 
+            onclick="generateCard(document.getElementById('raritySelect').value)"
+            class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+            Generate Card
+        </button>
+    </form>
+
+    <div id="generated-card" class="mt-6 text-center">
+        <!-- Generated card will be displayed here -->
+    </div>
+</div>
+{% endblock %}

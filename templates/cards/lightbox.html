@@ -1,0 +1,57 @@
+<!-- Lightbox Modal -->
+<div id="lightbox" class="fixed inset-0 bg-black bg-opacity-75 hidden z-50 flex items-center justify-center" onclick="closeLightbox()">
+    <div class="max-w-4xl mx-auto p-4" onclick="event.stopPropagation()">
+        <div id="lightbox-container" class="relative">
+            <img id="lightbox-image" src="" alt="Card Preview" class="max-h-[90vh] w-auto mx-auto rounded-lg shadow-xl">
+        </div>
+    </div>
+</div>
+
+<script>
+let currentLightboxEffect = null;
+
+async function openLightbox(imageUrl, rarity) {
+    const lightbox = document.getElementById('lightbox');
+    const lightboxContainer = document.getElementById('lightbox-container');
+    const lightboxImage = document.getElementById('lightbox-image');
+    
+    // Set image source
+    lightboxImage.src = imageUrl;
+    
+    // Show lightbox
+    lightbox.classList.remove('hidden');
+    document.body.style.overflow = 'hidden'; // Prevent scrolling
+    
+    // Initialize 3D effect for rare/mythic cards
+    if (rarity === 'Rare' || rarity === 'Mythic Rare') {
+        try {
+            await ensureEffectScriptLoaded();
+            currentLightboxEffect = new MTGCard3DTiltEffect(lightboxContainer, true);
+            console.log('Lightbox effect initialized');
+        } catch (error) {
+            console.error('Error initializing lightbox effect:', error);
+        }
+    }
+}
+
+function closeLightbox() {
+    const lightbox = document.getElementById('lightbox');
+    
+    // Clean up 3D effect
+    if (currentLightboxEffect) {
+        currentLightboxEffect.destroy();
+        currentLightboxEffect = null;
+    }
+    
+    // Hide lightbox
+    lightbox.classList.add('hidden');
+    document.body.style.overflow = ''; // Restore scrolling
+}
+
+// Close lightbox on escape key
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeLightbox();
+    }
+});
+</script>

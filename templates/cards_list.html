@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mx-auto px-4 py-8">
+    <h1 class="text-3xl font-bold mb-6">Generated Cards</h1>
+    
+    {% if cards %}
+    <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        {% for card in cards %}
+            {% include 'card.html' %}
+        {% endfor %}
+    </div>
+    
+    <!-- Pagination Controls -->
+    <div class="flex justify-center items-center mt-8 space-x-4">
+        {% if current_page > 1 %}
+        <a href="/cards?page={{ current_page - 1 }}&per_page={{ per_page }}" 
+           class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+            Previous
+        </a>
+        {% endif %}
+        
+        <span class="text-gray-700">
+            Page {{ current_page }} of {{ total_pages }} 
+            ({{ total_cards }} total cards)
+        </span>
+        
+        {% if current_page < total_pages %}
+        <a href="/cards?page={{ current_page + 1 }}&per_page={{ per_page }}" 
+           class="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+            Next
+        </a>
+        {% endif %}
+    </div>
+    
+    {% else %}
+    <div class="text-center text-gray-600 py-8">
+        <p>No cards have been generated yet.</p>
+        <a href="/" class="mt-4 inline-block px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600">
+            Generate Your First Card
+        </a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
