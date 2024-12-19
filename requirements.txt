@@ -8,4 +8,4 @@ openai
 boto3
 Pillow
 python-jose
-clerk-sdk
+websockets
