@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+
+{% block content %}
+    <div id="app" class="min-w-[100px] min-h-[40px] flex items-center justify-center">
+        <div class="text-sm text-blue-200">Loading auth...</div>
+    </div>
+    <script>
+      function initializeClerk() {
+        const authErrorDiv = document.getElementById('auth-error');
+        const appDiv = document.getElementById('app');
+
+        if (typeof Clerk === 'undefined') {
+          console.error('Clerk not loaded yet, retrying in 100ms');
+          if (authErrorDiv) {
+            authErrorDiv.textContent = 'Clerk not loaded, retrying...';
+            authErrorDiv.classList.remove('hidden');
+          }
+          setTimeout(initializeClerk, 100);
+          return;
+        }
+
+        try {
+          Clerk.load().then(() => {
+            if (!appDiv) {
+              console.error('App div not found');
+              return;
+            }
+            if (authErrorDiv) {
+              authErrorDiv.classList.add('hidden');
+            }
+
+            if (Clerk.user) {
+              appDiv.innerHTML = '<div id="user-button"></div>';
+              const userButtonDiv = document.getElementById('user-button');
+              Clerk.mountUserButton(userButtonDiv);
+            } else {
+              appDiv.innerHTML = '<div id="sign-in"></div>';
+              const signInDiv = document.getElementById('sign-in');
+              Clerk.mountSignIn(signInDiv);
+            }
+          }).catch(error => {
+            console.error('Error initializing Clerk:', error);
+            if (authErrorDiv) {
+              authErrorDiv.textContent = 'Error initializing Clerk.';
+              authErrorDiv.classList.remove('hidden');
+            }
+          });
+        } catch (error) {
+          console.error('Error in Clerk initialization:', error);
+          if (authErrorDiv) {
+            authErrorDiv.textContent = 'Error in Clerk initialization.';
+            authErrorDiv.classList.remove('hidden');
+          }
+        }
+      }
+
+      // Start initialization when DOM is ready
+      document.addEventListener('DOMContentLoaded', initializeClerk);
+    </script>
+{% endblock %}

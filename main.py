@@ -6,9 +6,9 @@ from typing import Optional
 import asyncio
 import re
 
-from fastapi import FastAPI, Request, Form, HTTPException
+from fastapi import FastAPI, Request, Form, HTTPException, Depends
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import create_engine, Column, Integer, String, JSON, DateTime
 from sqlalchemy.ext.declarative import declarative_base
@@ -18,6 +18,7 @@ import json
 
 # Load environment variables
 load_dotenv()
+
 
 # Import your existing card generation modules
 from generator.card_generator import generate_card
@@ -65,14 +66,27 @@ Base.metadata.create_all(bind=engine)
 # FastAPI App
 app = FastAPI(title="Magic Card Generator")
 
+
 # Setup static files and templates
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
+# Template context dependency
+async def get_template_context(request: Request):
+    return {
+        "request": request,
+        "clerk_publishable_key": os.getenv("CLERK_API_KEY")
+    }
+
 @app.get("/", response_class=HTMLResponse)
-async def read_root(request: Request):
+async def read_root(request: Request, context: dict = Depends(get_template_context)):
     """Render the main page for card generation."""
-    return templates.TemplateResponse("index.html", {"request": request})
+    return templates.TemplateResponse("index.html", context)
+
+@app.get("/auth", response_class=HTMLResponse)
+async def auth(request: Request, context: dict = Depends(get_template_context)):
+    """Render the authentication page."""
+    return templates.TemplateResponse("auth.html", context)
 
 @app.post("/generate-card")
 async def create_card(
@@ -233,7 +247,12 @@ def get_next_set_name_and_number() -> tuple:
     return default_set_name, set_number, random.randint(1, 999)
 
 @app.get("/cards", response_class=HTMLResponse)
-async def list_cards(request: Request, page: int = 1, per_page: int = 10):
+async def list_cards(
+    request: Request, 
+    page: int = 1, 
+    per_page: int = 10,
+    context: dict = Depends(get_template_context)
+):
     """
     Retrieve and render paginated list of generated cards.
     
@@ -289,14 +308,14 @@ async def list_cards(request: Request, page: int = 1, per_page: int = 10):
             card_list.append(card_data)
         
         # Render template with pagination context
-        return templates.TemplateResponse("cards_list.html", {
-            "request": request,
+        context.update({
             "cards": card_list,
             "current_page": page,
             "total_pages": total_pages,
             "per_page": per_page,
             "total_cards": total_cards
         })
+        return templates.TemplateResponse("cards_list.html", context)
     
     except Exception as e:
         logger.error(f"Error retrieving cards: {e}")
@@ -309,6 +328,7 @@ async def list_cards(request: Request, page: int = 1, per_page: int = 10):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
 
 if __name__ == "__main__":
     import uvicorn
