@@ -700,9 +700,10 @@ async def get_pack_status(
         logger.error(f"Error getting pack status: {e}")
         raise HTTPException(status_code=500, detail="Error getting pack status")
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
+@app.websocket("/ws/{client_id}")
+async def websocket_endpoint(websocket: WebSocket, client_id: str):
     """WebSocket endpoint for real-time updates."""
+    user_id = None
     try:
         await websocket.accept()
         
@@ -713,27 +714,30 @@ async def websocket_endpoint(websocket: WebSocket):
             return
             
         # Verify token and get user
-        try:
-            decoded_token = verify_id_token(auth_data['token'])
-            user_id = decoded_token.get("uid")
+        decoded_token = verify_id_token(auth_data['token'])
+        user_id = decoded_token.get("uid")
+        
+        if not user_id:
+            await websocket.close(code=1008)  # Policy violation
+            return
+        
+        # Connect to WebSocket manager
+        await websocket_manager.connect(websocket, user_id)
+        
+        # Keep connection alive and handle any incoming messages
+        while True:
+            await websocket.receive_text()  # Keep connection alive
             
-            if not user_id:
-                await websocket.close(code=1008)  # Policy violation
-                return
-            
-            # Connect to WebSocket manager
-            await websocket_manager.connect(websocket, user_id)
-            
-            # Keep connection alive and handle any incoming messages
-            while True:
-                await websocket.receive_text()  # Keep connection alive
-                
-        except WebSocketDisconnect:
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected for user {user_id}")
+        if user_id:
             websocket_manager.disconnect(websocket, user_id)
-            
     except Exception as e:
-        logger.error("WebSocket error")  # Don't log the actual error to avoid token exposure
-        await websocket.close(code=1011)  # Internal error
+        logger.error(f"WebSocket error: {str(e)}")
+        try:
+            await websocket.close(code=1011)  # Internal error
+        except Exception:
+            pass  # Ignore any errors during emergency close
 
 # Add packs to protected routes
 protectedRoutes = ['/generate', '/cards', '/packs']
@@ -746,4 +750,30 @@ async def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import logging
+    
+    # Configure uvicorn logging to be minimal
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_config={
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "default": {
+                "()": "uvicorn.logging.DefaultFormatter",
+                "fmt": "%(levelprefix)s %(message)s",
+                "use_colors": None,
+            },
+        },
+        "handlers": {
+            "default": {
+                "formatter": "default",
+                "class": "logging.StreamHandler",
+                "stream": "ext://sys.stderr",
+            },
+        },
+        "loggers": {
+            "uvicorn": {"handlers": ["default"], "level": "WARNING"},
+            "uvicorn.error": {"level": "WARNING"},
+            "uvicorn.access": {"handlers": ["default"], "level": "WARNING", "propagate": False},
+        },
+    })

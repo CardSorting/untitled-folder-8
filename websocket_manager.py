@@ -11,11 +11,10 @@ class WebSocketManager:
     
     async def connect(self, websocket: WebSocket, user_id: str):
         """Connect a user's websocket."""
-        await websocket.accept()
         if user_id not in self.active_connections:
             self.active_connections[user_id] = set()
         self.active_connections[user_id].add(websocket)
-        logger.info(f"WebSocket connected for user {user_id}")
+        logger.info(f"WebSocket connection established for user {user_id}")
     
     def disconnect(self, websocket: WebSocket, user_id: str):
         """Disconnect a user's websocket."""
@@ -23,7 +22,7 @@ class WebSocketManager:
             self.active_connections[user_id].discard(websocket)
             if not self.active_connections[user_id]:
                 del self.active_connections[user_id]
-        logger.info(f"WebSocket disconnected for user {user_id}")
+        logger.info("WebSocket connection closed")
     
     async def broadcast_to_user(self, user_id: str, message: dict):
         """Send a message to all connections for a specific user."""
@@ -33,7 +32,7 @@ class WebSocketManager:
                 try:
                     await connection.send_json(message)
                 except Exception as e:
-                    logger.error(f"Error sending message to websocket: {e}")
+                    logger.error("Error sending WebSocket message")
                     dead_connections.add(connection)
             
             # Clean up dead connections

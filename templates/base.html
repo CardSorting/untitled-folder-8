@@ -30,7 +30,8 @@
             if (!token) return;
 
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/ws`;
+            const clientId = Math.random().toString(36).substring(7);
+            const wsUrl = `${protocol}//${window.location.host}/ws/${clientId}`;
             
             ws = new WebSocket(wsUrl);
             
