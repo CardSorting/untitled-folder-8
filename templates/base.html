@@ -23,6 +23,29 @@
         }
     </style>
     <script>
+        // Function to fetch and update credit balance
+        async function updateCreditBalance() {
+            try {
+                const token = localStorage.getItem('firebaseToken');
+                if (!token) return;
+
+                const response = await fetch('/credits/balance', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to fetch credit balance');
+                }
+
+                const data = await response.json();
+                document.getElementById('credit-balance').textContent = data.credits;
+            } catch (error) {
+                console.error('Error fetching credit balance:', error);
+            }
+        }
+
         async function generateCard(rarity = null) {
             try {
                 const formData = new FormData();
@@ -86,6 +109,8 @@
                 loginButton.classList.add('hidden');
                 logoutButton.classList.remove('hidden');
                 authRequiredElements.forEach(el => el.classList.remove('hidden'));
+                // Update credit balance when user is authenticated
+                updateCreditBalance();
             } else {
                 loginButton.classList.remove('hidden');
                 logoutButton.classList.add('hidden');
@@ -107,6 +132,8 @@
                     // User is signed in
                     user.getIdToken().then(function(token) {
                         localStorage.setItem('firebaseToken', token);
+                        // Update credit balance after getting token
+                        updateCreditBalance();
                     });
                 } else {
                     // User is signed out
@@ -118,6 +145,11 @@
                     }
                 }
             });
+
+            // Update credit balance periodically
+            if (auth.currentUser) {
+                setInterval(updateCreditBalance, 30000); // Update every 30 seconds
+            }
         });
     </script>
     {% block head %}{% endblock %}
@@ -127,8 +159,14 @@
         <div class="container mx-auto flex justify-between items-center">
             <a href="/" class="text-2xl font-bold md:text-3xl lg:text-4xl">Magic Card Generator</a>
             <div class="flex items-center space-x-4 md:space-x-6 lg:space-x-8">
+                <!-- Credits display -->
+                <div class="auth-required hidden">
+                    <span class="text-sm">Credits: </span>
+                    <span id="credit-balance" class="font-bold">0</span>
+                </div>
                 <!-- Auth-required links -->
                 <a href="/generate" class="hover:text-blue-200 auth-required hidden">Generate</a>
+                <a href="/packs" class="hover:text-blue-200 auth-required hidden">Buy Packs</a>
                 <a href="/cards" class="hover:text-blue-200 auth-required hidden">Card Library</a>
                 <!-- Auth links -->
                 <a href="/auth" class="hover:text-blue-200 auth-login">Login</a>

@@ -14,20 +14,20 @@ from fastapi import FastAPI, Request, Form, HTTPException, Depends
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import create_engine, Column, Integer, String, JSON, DateTime
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy import Column, Integer, String, JSON, DateTime, func
 from sqlalchemy.orm import Session
 
 # Load environment variables
 load_dotenv()
 
+# Import database configuration
+from database import SessionLocal, engine, init_db
 
 # Import your existing card generation modules
 from generator.card_generator import generate_card
 from generator.card_data_utils import validate_card_data, standardize_card_data
 from generator.image_utils import generate_card_image
-from models import Base
+from models import Base, CardModel, UnclaimedCard, CreditTransaction
 from user_models import UserModel
 
 # Logging configuration
@@ -38,11 +38,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Database setup
-DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./card_generator.db')
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
 # Image storage path
 IMAGE_STORAGE_PATH = os.getenv('IMAGE_STORAGE_PATH', './generated_images/')
 os.makedirs(IMAGE_STORAGE_PATH, exist_ok=True)
@@ -51,21 +46,8 @@ os.makedirs(IMAGE_STORAGE_PATH, exist_ok=True)
 MAX_CARDS_PER_DAY = int(os.getenv('MAX_CARDS_PER_DAY', 50))
 MAX_GENERATIONS_PER_HOUR = int(os.getenv('MAX_GENERATIONS_PER_HOUR', 10))
 
-# Database Model for Card
-class CardModel(Base):
-    __tablename__ = "cards"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    name = Column(String, index=True)
-    card_data = Column(JSON)
-    image_path = Column(String, nullable=True)
-    rarity = Column(String)
-    set_name = Column(String)
-    card_number = Column(String)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-# Create tables
-Base.metadata.create_all(bind=engine)
+# Initialize database
+init_db()
 
 # FastAPI App
 app = FastAPI(title="Magic Card Generator")
@@ -137,22 +119,25 @@ async def landing_page(request: Request, context: dict = Depends(get_template_co
     """Render the landing page."""
     return templates.TemplateResponse("landing.html", context)
 
-@app.get("/generate", response_class=HTMLResponse)
-async def generate_page(request: Request, context: dict = Depends(get_template_context)):
-    """Render the card generation page."""
-    return templates.TemplateResponse("index.html", context)
-
 @app.get("/auth", response_class=HTMLResponse)
 async def auth(request: Request, context: dict = Depends(get_template_context)):
     """Render the authentication page."""
     return templates.TemplateResponse("auth.html", context)
 
-@app.post("/generate-card")
+@app.get("/packs", response_class=HTMLResponse)
+async def packs_page(request: Request, context: dict = Depends(get_template_context)):
+    """Render the pack purchase page."""
+    return templates.TemplateResponse("packs.html", context)
+
+@app.post("/admin/generate-card")
 async def create_card(
     request: Request,
-    current_user: Optional[UserModel] = Depends(get_current_user),
+    current_user: UserModel = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
+    """Generate a new card (admin only)."""
+    if not current_user or not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
     """Generate a new card with optional rarity."""
     # Extremely verbose logging
     logger.setLevel(logging.DEBUG)
@@ -246,7 +231,7 @@ async def create_card(
         # Save to database
         try:
             logger.debug("Preparing to save card to database")
-            db_card = CardModel(
+            db_card = UnclaimedCard(
                 name=standardized_card_data.get('name', 'Unnamed Card'),
                 card_data=standardized_card_data,
                 image_path=image_path,
@@ -334,22 +319,27 @@ async def list_cards(
         # Calculate offset for pagination
         offset = (page - 1) * per_page
         
-        # Query cards with pagination
-        total_cards = db.query(CardModel).count()
+        # Query both claimed and unclaimed cards
+        total_cards = (
+            db.query(UnclaimedCard)
+            .filter(UnclaimedCard.is_claimed == False)
+            .count()
+        )
         total_pages = (total_cards + per_page - 1) // per_page
         
-        # Fetch paginated cards, ordered by creation date (most recent first)
-        cards = (
-            db.query(CardModel)
-            .order_by(CardModel.created_at.desc())
+        # Fetch unclaimed cards first
+        unclaimed_cards = (
+            db.query(UnclaimedCard)
+            .filter(UnclaimedCard.is_claimed == False)
+            .order_by(UnclaimedCard.created_at.desc())
             .offset(offset)
             .limit(per_page)
             .all()
         )
         
-        # Prepare card data for template
+        # Prepare unclaimed card data for template
         card_list = []
-        for card in cards:
+        for card in unclaimed_cards:
             card_data = {
                 'id': card.id,
                 'name': card.name,
@@ -363,6 +353,7 @@ async def list_cards(
                 'flavorText': card.card_data.get('flavorText', ''),
                 'powerToughness': card.card_data.get('powerToughness', ''),
                 'images': [{'backblaze_url': card.image_path}] if card.image_path else [],
+                'is_claimed': False,
             }
             card_list.append(card_data)
         
@@ -382,6 +373,267 @@ async def list_cards(
     finally:
         # Always close the database session
         db.close()
+
+@app.post("/cards/{card_id}/claim")
+async def claim_card(
+    card_id: int,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Claim an unclaimed card."""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    # Find the unclaimed card
+    unclaimed_card = (
+        db.query(UnclaimedCard)
+        .filter(UnclaimedCard.id == card_id, UnclaimedCard.is_claimed == False)
+        .first()
+    )
+    
+    if not unclaimed_card:
+        raise HTTPException(status_code=404, detail="Card not found or already claimed")
+    
+    try:
+        # Create a new claimed card
+        claimed_card = CardModel(
+            name=unclaimed_card.name,
+            card_data=unclaimed_card.card_data,
+            image_path=unclaimed_card.image_path,
+            rarity=unclaimed_card.rarity,
+            set_name=unclaimed_card.set_name,
+            card_number=unclaimed_card.card_number,
+            user_id=current_user.firebase_id
+        )
+        db.add(claimed_card)
+        
+        # Mark the unclaimed card as claimed
+        unclaimed_card.is_claimed = True
+        unclaimed_card.claimed_by_user_id = current_user.firebase_id
+        unclaimed_card.claimed_at = datetime.utcnow()
+        
+        db.commit()
+        
+        return JSONResponse(
+            status_code=200,
+            content={"message": "Card claimed successfully", "card_id": claimed_card.id}
+        )
+    
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error claiming card: {e}")
+        raise HTTPException(status_code=500, detail="Error claiming card")
+
+from task_manager import task_manager
+
+@app.on_event("startup")
+async def startup_event():
+    """Start the task manager when the application starts."""
+    await task_manager.start()
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """Stop the task manager when the application shuts down."""
+    await task_manager.stop()
+
+# Pack opening cost
+PACK_COST = 100  # Credits required to open a pack
+
+@app.post("/credits/add")
+async def add_credits(
+    amount: int,
+    user_id: str,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Add credits to a user (admin only)."""
+    if not current_user or not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    try:
+        user = db.query(UserModel).filter(UserModel.firebase_id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        await user.add_credits(
+            db=db,
+            amount=amount,
+            description=f"Admin granted {amount} credits",
+            transaction_type="admin_grant"
+        )
+        
+        db.commit()
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                "message": f"Added {amount} credits to user",
+                "new_balance": user.credits
+            }
+        )
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error adding credits: {e}")
+        raise HTTPException(status_code=500, detail="Error adding credits")
+
+@app.get("/credits/balance")
+async def get_credit_balance(
+    current_user: UserModel = Depends(get_current_user)
+):
+    """Get current user's credit balance."""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    return JSONResponse(
+        status_code=200,
+        content={"credits": current_user.credits}
+    )
+
+@app.get("/credits/history")
+async def get_credit_history(
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    page: int = 1,
+    per_page: int = 10
+):
+    """Get user's credit transaction history."""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    try:
+        # Calculate offset for pagination
+        offset = (page - 1) * per_page
+        
+        # Get total transactions
+        total_transactions = (
+            db.query(CreditTransaction)
+            .filter(CreditTransaction.user_id == current_user.firebase_id)
+            .count()
+        )
+        
+        # Get paginated transactions
+        transactions = (
+            db.query(CreditTransaction)
+            .filter(CreditTransaction.user_id == current_user.firebase_id)
+            .order_by(CreditTransaction.created_at.desc())
+            .offset(offset)
+            .limit(per_page)
+            .all()
+        )
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                "transactions": [
+                    {
+                        "amount": t.amount,
+                        "description": t.description,
+                        "type": t.transaction_type,
+                        "created_at": t.created_at.isoformat()
+                    }
+                    for t in transactions
+                ],
+                "total": total_transactions,
+                "page": page,
+                "per_page": per_page
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error getting credit history: {e}")
+        raise HTTPException(status_code=500, detail="Error getting credit history")
+
+@app.post("/packs/open")
+async def open_pack(
+    request: Request,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Submit a pack opening task to the queue."""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    # Check if user has enough credits
+    if not await current_user.has_enough_credits(PACK_COST):
+        raise HTTPException(
+            status_code=402,
+            detail=f"Insufficient credits. Pack opening costs {PACK_COST} credits."
+        )
+    
+    try:
+        # Deduct credits first
+        success = await current_user.spend_credits(
+            db=db,
+            amount=PACK_COST,
+            description="Opened a booster pack",
+            transaction_type="pack_opening"
+        )
+        
+        if not success:
+            raise HTTPException(
+                status_code=402,
+                detail="Failed to deduct credits"
+            )
+        
+        # Submit pack opening task
+        task_id = await task_manager.submit_task(
+            queue_name="pack_opening",
+            task_type="open_pack",
+            user_id=current_user.firebase_id,
+            data={}
+        )
+        
+        # Commit credit transaction
+        db.commit()
+        
+        return JSONResponse(
+            status_code=202,
+            content={
+                "message": "Pack opening task submitted",
+                "task_id": task_id
+            }
+        )
+    
+    except Exception as e:
+        logger.error(f"Error submitting pack opening task: {e}")
+        raise HTTPException(status_code=500, detail="Error submitting pack opening task")
+
+@app.get("/packs/status/{task_id}")
+async def get_pack_status(
+    task_id: str,
+    current_user: UserModel = Depends(get_current_user)
+):
+    """Get the status of a pack opening task."""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    try:
+        task = await task_manager.get_task_status("pack_opening", task_id)
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        
+        if task.user_id != current_user.firebase_id:
+            raise HTTPException(status_code=403, detail="Not authorized to view this task")
+        
+        response = {
+            "status": task.status,
+            "created_at": task.created_at.isoformat()
+        }
+        
+        if task.status == "completed":
+            response["result"] = task.result
+        elif task.status == "failed":
+            response["error"] = task.error
+        
+        return JSONResponse(status_code=200, content=response)
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting pack status: {e}")
+        raise HTTPException(status_code=500, detail="Error getting pack status")
+
+# Add packs to protected routes
+protectedRoutes = ['/generate', '/cards', '/packs']
 
 # Optional: Add a health check endpoint
 @app.get("/health")

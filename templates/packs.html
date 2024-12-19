@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+    <h1 class="text-3xl font-bold text-center mb-8">Magic Card Packs</h1>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Standard Booster Pack -->
+        <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+            <div class="relative">
+                <img src="/static/card_images/booster-pack.png" alt="Booster Pack" class="w-full h-48 object-cover">
+                <div class="absolute top-0 right-0 bg-blue-600 text-white px-3 py-1 rounded-bl-lg">
+                    100 Credits
+                </div>
+            </div>
+            <div class="p-6">
+                <h2 class="text-xl font-semibold mb-2">Standard Booster Pack</h2>
+                <p class="text-gray-600 mb-4">Contains 14 random cards:</p>
+                <ul class="text-sm text-gray-600 mb-4 list-disc list-inside">
+                    <li>1 Rare or Mythic Rare</li>
+                    <li>3 Uncommons</li>
+                    <li>10 Commons</li>
+                </ul>
+                <button 
+                    onclick="openPack()"
+                    class="w-full bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors"
+                >
+                    Open Pack
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Pack Opening Modal -->
+<div id="packModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div class="bg-white rounded-lg p-8 max-w-lg w-full mx-4">
+        <div id="packContent" class="text-center">
+            <h2 class="text-2xl font-bold mb-4">Opening Pack...</h2>
+            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+        </div>
+        <div id="packResult" class="hidden">
+            <h3 class="text-xl font-bold mb-4">Your Cards:</h3>
+            <div id="cardList" class="space-y-2 mb-4">
+                <!-- Cards will be inserted here -->
+            </div>
+            <div class="flex justify-end space-x-4">
+                <button 
+                    onclick="closePackModal()"
+                    class="bg-gray-200 text-gray-800 py-2 px-4 rounded hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-500 transition-colors"
+                >
+                    Close
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+async function openPack() {
+    try {
+        const token = localStorage.getItem('firebaseToken');
+        if (!token) {
+            window.location.href = '/auth';
+            return;
+        }
+
+        // Show modal with loading state
+        const modal = document.getElementById('packModal');
+        const content = document.getElementById('packContent');
+        const result = document.getElementById('packResult');
+        modal.classList.remove('hidden');
+        content.classList.remove('hidden');
+        result.classList.add('hidden');
+
+        // Submit pack opening request
+        const response = await fetch('/packs/open', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to open pack');
+        }
+
+        const data = await response.json();
+        
+        // Start polling for task status
+        await pollPackStatus(data.task_id);
+
+    } catch (error) {
+        console.error('Error opening pack:', error);
+        alert(error.message);
+        closePackModal();
+    }
+}
+
+async function pollPackStatus(taskId) {
+    try {
+        const token = localStorage.getItem('firebaseToken');
+        
+        while (true) {
+            const response = await fetch(`/packs/status/${taskId}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to check pack status');
+            }
+
+            const data = await response.json();
+            
+            if (data.status === 'completed') {
+                displayPackResults(data.result);
+                break;
+            } else if (data.status === 'failed') {
+                throw new Error(data.error || 'Pack opening failed');
+            }
+
+            // Wait before polling again
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
+    } catch (error) {
+        console.error('Error checking pack status:', error);
+        alert(error.message);
+        closePackModal();
+    }
+}
+
+function displayPackResults(result) {
+    const content = document.getElementById('packContent');
+    const resultDiv = document.getElementById('packResult');
+    const cardList = document.getElementById('cardList');
+    
+    // Clear previous results
+    cardList.innerHTML = '';
+    
+    // Add each card to the result
+    result.cards.forEach(card => {
+        const cardElement = document.createElement('div');
+        cardElement.className = 'flex items-center justify-between p-2 bg-gray-50 rounded';
+        cardElement.innerHTML = `
+            <span class="font-medium">${card.name}</span>
+            <span class="text-sm text-gray-600">${card.rarity}</span>
+        `;
+        cardList.appendChild(cardElement);
+    });
+    
+    // Show results
+    content.classList.add('hidden');
+    resultDiv.classList.remove('hidden');
+    
+    // Update credit balance
+    updateCreditBalance();
+}
+
+function closePackModal() {
+    const modal = document.getElementById('packModal');
+    modal.classList.add('hidden');
+}
+</script>
+{% endblock %}
