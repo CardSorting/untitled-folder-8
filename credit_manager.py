@@ -127,12 +127,20 @@ class CreditManager:
             "per_page": per_page
         }
 
-# Create Redis client with Upstash configuration
+import ssl
+
+# Create Redis client with Upstash configuration and SSL context
+ssl_context = ssl.create_default_context()
+ssl_context.check_hostname = False
+ssl_context.verify_mode = ssl.CERT_NONE
+
 redis_client = Redis(
     host='adapting-panther-46467.upstash.io',
     port=6379,
     password='AbWDAAIjcDFkZTYzZmU4NzZhNjg0YTNhYjkwMzk2NTNiNTQ5YjE1MHAxMA',
-    ssl=True
+    ssl=True,
+    ssl_cert_reqs=None,
+    ssl_ca_certs=None
 )
 
 # Create global credit manager instance
