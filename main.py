@@ -32,7 +32,13 @@ from generator.card_data_utils import validate_card_data, standardize_card_data
 from generator.image_utils import generate_card_image
 from models import Base, CardModel, UnclaimedCard
 from user_models import UserModel
-from tasks import process_pack_opening, PACK_CONFIG, PACK_ERRORS, PackError
+from tasks import (
+    process_pack_opening,
+    get_credit_balance,
+    PACK_CONFIG,
+    PACK_ERRORS,
+    PackError
+)
 from credit_manager import credit_manager
 
 # Logging configuration
@@ -243,19 +249,64 @@ async def get_pack_status(
         logger.error(f"Error getting pack status: {e}")
         raise HTTPException(status_code=500, detail="Error getting pack status")
 
-@app.get("/credits/balance")
-async def get_credit_balance(
+@app.post("/credits/start-balance-task")
+async def start_balance_task(
     current_user: UserModel = Depends(get_current_user)
 ):
-    """Get current user's credit balance from Redis."""
+    """Start a Celery task to get credit balance."""
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
     
-    balance = credit_manager.get_balance(current_user.firebase_id)
-    return JSONResponse(
-        status_code=200,
-        content={"credits": balance}
-    )
+    try:
+        task = get_credit_balance.delay(current_user.firebase_id)
+        return JSONResponse(
+            status_code=202,
+            content={
+                "message": "Credit balance task started",
+                "task_id": task.id
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error starting credit balance task: {e}")
+        raise HTTPException(status_code=500, detail="Error starting credit balance task")
+
+@app.get("/credits/task-status/{task_id}")
+async def get_balance_task_status(
+    task_id: str,
+    current_user: UserModel = Depends(get_current_user)
+):
+    """Get the status of a credit balance task."""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    try:
+        task_result = AsyncResult(task_id)
+        
+        if not task_result.ready():
+            status = "pending"
+            result = None
+            error = None
+        else:
+            if task_result.successful():
+                status = "completed"
+                result = task_result.get()
+                error = None
+            else:
+                status = "failed"
+                result = None
+                error = str(task_result.result)
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": status,
+                "result": result,
+                "error": error
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error getting balance task status: {e}")
+        raise HTTPException(status_code=500, detail="Error getting task status")
 
 @app.get("/credits/history")
 async def get_credit_history(

@@ -195,6 +195,21 @@ def process_pack_opening(self, user_id: str, data: Dict[str, Any]) -> Dict[str, 
         db.close()
 
 @shared_task(bind=True, max_retries=3)
+def get_credit_balance(self, user_id: str) -> Dict[str, Any]:
+    """
+    Celery task to get user's credit balance from Redis.
+    """
+    try:
+        balance = credit_manager.get_balance(user_id)
+        return {
+            "credits": balance,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+    except Exception as e:
+        logger.error(f"Error getting credit balance for user {user_id}: {e}")
+        raise self.retry(exc=e, countdown=5)
+
+@shared_task(bind=True, max_retries=3)
 def spend_credits(self, user_id: str, amount: int, description: str, transaction_type: str) -> bool:
     """
     Celery task to handle credit spending using Redis.

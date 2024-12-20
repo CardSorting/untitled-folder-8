@@ -1,10 +1,15 @@
 from celery import Celery
 
+from ssl import CERT_NONE
+
+# Redis URL with SSL configuration
+REDIS_URL = 'rediss://:AbWDAAIjcDFkZTYzZmU4NzZhNjg0YTNhYjkwMzk2NTNiNTQ5YjE1MHAxMA@adapting-panther-46467.upstash.io:6379?ssl_cert_reqs=CERT_NONE'
+
 # Initialize Celery with Redis backend
 celery_app = Celery(
     'playmoretcg',
-    broker='rediss://:AbWDAAIjcDFkZTYzZmU4NzZhNjg0YTNhYjkwMzk2NTNiNTQ5YjE1MHAxMA@adapting-panther-46467.upstash.io:6379',
-    backend='rediss://:AbWDAAIjcDFkZTYzZmU4NzZhNjg0YTNhYjkwMzk2NTNiNTQ5YjE1MHAxMA@adapting-panther-46467.upstash.io:6379'
+    broker=REDIS_URL,
+    backend=REDIS_URL
 )
 
 # Configure Celery
@@ -16,6 +21,9 @@ celery_app.conf.update(
     enable_utc=True,
     broker_connection_retry_on_startup=True,
     redis_backend_use_ssl={
-        'ssl_cert_reqs': None
+        'ssl_cert_reqs': CERT_NONE
+    },
+    broker_use_ssl={
+        'ssl_cert_reqs': CERT_NONE
     }
 )

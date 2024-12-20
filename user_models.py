@@ -16,7 +16,6 @@ class UserModel(Base):
     
     # Relationships
     cards = relationship("CardModel", back_populates="user")
-    claimed_cards = relationship("UnclaimedCard", back_populates="claimed_by")
 
     async def notify_credit_update(self, amount: int, description: str, transaction_type: str):
         """
