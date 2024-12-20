@@ -7,7 +7,7 @@ from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 from celery import shared_task
 
-from models import UnclaimedCard, CardModel
+from models import UnclaimedCard, CardModel, UserModel
 from database import SessionLocal
 from celery_config import celery_app
 from credit_manager import credit_manager

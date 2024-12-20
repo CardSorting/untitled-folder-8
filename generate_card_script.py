@@ -1,7 +1,6 @@
 from sqlalchemy.orm import Session
 from database import SessionLocal, init_db
-from models import UnclaimedCard
-from user_models import UserModel
+from models import UnclaimedCard, UserModel
 import httpx
 import asyncio
 import os

@@ -30,8 +30,7 @@ from database import SessionLocal, engine, init_db
 from generator.card_generator import generate_card
 from generator.card_data_utils import validate_card_data, standardize_card_data
 from generator.image_utils import generate_card_image
-from models import Base, CardModel, UnclaimedCard
-from user_models import UserModel
+from models import Base, CardModel, UnclaimedCard, UserModel
 from tasks import (
     process_pack_opening,
     get_credit_balance,

@@ -1,7 +1,6 @@
 from sqlalchemy.orm import Session
 from database import SessionLocal, init_db
-from user_models import UserModel
-from models import CardModel, UnclaimedCard, CreditTransaction  # Import related models
+from models import CardModel, UnclaimedCard, UserModel  # Import related models
 
 def set_admin():
     """Set admin privileges for a specific user."""

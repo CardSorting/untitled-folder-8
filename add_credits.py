@@ -1,7 +1,6 @@
-from sqlalchemy import update
-from database import SessionLocal, engine
-from user_models import UserModel
-from models import CreditTransaction
+from database import SessionLocal
+from models import UserModel
+from credit_manager import credit_manager
 
 def add_credits_to_all_users():
     # Create a database session
@@ -10,23 +9,21 @@ def add_credits_to_all_users():
         # Get all users
         users = db.query(UserModel).all()
         
-        # Add credits and create transactions for each user
+        # Add credits to each user using credit manager
+        success_count = 0
         for user in users:
-            user.credits += 10000
-            transaction = CreditTransaction(
+            success = credit_manager.add_credits(
                 user_id=user.firebase_id,
                 amount=10000,
                 description="System-wide credit bonus",
                 transaction_type="bonus"
             )
-            db.add(transaction)
+            if success:
+                success_count += 1
         
-        # Commit the changes
-        db.commit()
-        print(f"Successfully added 10000 credits to {len(users)} users")
+        print(f"Successfully added 10000 credits to {success_count} out of {len(users)} users")
     
     except Exception as e:
-        db.rollback()
         print(f"Error adding credits: {str(e)}")
     finally:
         db.close()

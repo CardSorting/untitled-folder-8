@@ -1,6 +1,5 @@
 from database import engine, Base
-from models import CardModel, UnclaimedCard
-from user_models import UserModel
+from models import CardModel, UnclaimedCard, UserModel
 
 def reset_database():
     """Drop all tables and recreate them."""

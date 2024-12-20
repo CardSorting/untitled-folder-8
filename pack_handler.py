@@ -7,8 +7,7 @@ from sqlalchemy import func, and_
 from datetime import datetime
 from contextlib import contextmanager
 
-from models import UnclaimedCard, CardModel, CreditTransaction
-from user_models import UserModel
+from models import UnclaimedCard, CardModel, UserModel
 from database import SessionLocal
 
 logger = logging.getLogger(__name__)
