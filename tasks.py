@@ -1,5 +1,7 @@
 from typing import Dict, Any, List, Optional, Union
 import logging
+import random
+import time
 from datetime import datetime
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
@@ -49,16 +51,21 @@ def get_cards_by_rarity(
     mythic_rate: Optional[float] = None
 ) -> List[UnclaimedCard]:
     """Get and claim specified number of cards of given rarity."""
+    # Ensure random is properly seeded for this process
+    random.seed()
+    
     cards = []
     retry_count = 0
     claim_time = datetime.utcnow()
     
     while len(cards) < count and retry_count <= retries:
         if retry_count > 0:
-            celery_app.backend.sleep(PACK_CONFIG["retry_delay"])
+            time.sleep(PACK_CONFIG["retry_delay"])
         
         if mythic_rate and isinstance(rarity, list) and 'Rare' in rarity:
-            if celery_app.backend.random() < mythic_rate:
+            # Explicitly use Python's random module
+            roll = random.random()
+            if roll < mythic_rate:
                 query_rarity = ['Mythic']
             else:
                 query_rarity = ['Rare']

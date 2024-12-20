@@ -54,6 +54,9 @@ def parse_card_data_from_text(text: str) -> Dict[str, Any]:
 
 def generate_card(rarity: str = None) -> Dict[str, Any]:
     """Generate a card with optional rarity."""
+    # Ensure random is properly seeded for this process
+    random.seed()
+    
     # Validate rarity input
     if rarity and rarity not in [r.value for r in Rarity]:
         logger.warning(f"Invalid rarity provided: {rarity}. Defaulting to random.")

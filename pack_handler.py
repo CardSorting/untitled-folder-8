@@ -42,8 +42,8 @@ class PackError(Exception):
     pass
 
 def get_cards_by_rarity(
-    db: Session, 
-    rarity: Union[str, List[str]], 
+    db: Session,
+    rarity: Union[str, List[str]],
     count: int,
     user_id: str,
     retries: int = 0,
@@ -53,6 +53,9 @@ def get_cards_by_rarity(
     Get and claim specified number of cards of given rarity with retry logic.
     All operations are done in a single atomic transaction.
     """
+    # Ensure random is properly seeded for this process
+    random.seed()
+    
     cards = []
     retry_count = 0
     claim_time = datetime.utcnow()
@@ -63,7 +66,9 @@ def get_cards_by_rarity(
         
         # Apply mythic rate if specified (for rare/mythic slot)
         if mythic_rate and isinstance(rarity, list) and 'Rare' in rarity:
-            if random.uniform(0.0, 1.0) < mythic_rate:
+            # Explicitly use Python's random module
+            roll = random.uniform(0.0, 1.0)
+            if roll < mythic_rate:
                 query_rarity = ['Mythic']
             else:
                 query_rarity = ['Rare']
