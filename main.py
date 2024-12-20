@@ -35,6 +35,7 @@ from user_models import UserModel
 from tasks import (
     process_pack_opening,
     get_credit_balance,
+    claim_daily_credits,
     PACK_CONFIG,
     PACK_ERRORS,
     PackError
@@ -350,7 +351,7 @@ async def can_claim_daily_credits(
         raise HTTPException(status_code=500, detail="Error checking claim status")
 
 @app.post("/credits/claim-daily")
-async def claim_daily_credits(
+async def claim_daily_credits_endpoint(
     current_user: UserModel = Depends(get_current_user)
 ):
     """Claim daily credits."""
