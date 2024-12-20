@@ -304,6 +304,40 @@ def generate_card_task(self, rarity: str = None) -> Dict[str, Any]:
         logger.error(f"Unhandled error in generate_card_task: {str(e)}")
         raise
 
+@shared_task(bind=True, max_retries=3)
+def create_card_task(self, user_id: str, name: str) -> Dict[str, Any]:
+    """
+    Celery task to create a card with user-provided name.
+    """
+    db = SessionLocal()
+    try:
+        # Generate card with provided name
+        card_data = generate_card(name=name)
+        
+        # Add to user's collection
+        card_model = CardModel(
+            owner_id=user_id,
+            name=card_data['name'],
+            card_data=card_data,
+            image_path=card_data.get('image_path'),
+            rarity=card_data['rarity'],
+            set_name=card_data['set_name'],
+            card_number=card_data['card_number']
+        )
+        db.add(card_model)
+        db.commit()
+        
+        logger.info(f"Created card '{card_data['name']}' for user {user_id}")
+        return card_data
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error creating card for user {user_id}: {str(e)}")
+        raise self.retry(exc=e, countdown=5)
+    
+    finally:
+        db.close()
+
 @shared_task(bind=True)
 def generate_initial_cards_task(self, batch_config: Dict[str, int]) -> None:
     """

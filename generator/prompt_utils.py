@@ -129,7 +129,7 @@ def get_themed_elements(colors: List[str]) -> Dict[str, Any]:
         'colors': colors
     }
 
-def generate_card_prompt(rarity: str = None) -> str:
+def generate_card_prompt(rarity: str = None, name: str = None) -> str:
     """Generate the GPT prompt for creating the card."""
     if not rarity:
         rarity_options = ', '.join([r.value for r in Rarity])
@@ -153,24 +153,33 @@ def generate_card_prompt(rarity: str = None) -> str:
         mana_cost_guidance = f"Use {' and '.join(colors)} mana symbols with optional generic mana. "
         mana_cost_guidance += f"Example: {'{2}' + color_symbols} for a 4-cost card."
     
-    # Build the prompt with emphasis on thematic cohesion
-    creature_theme = random.choice(themes['creatures'][:2])
-    keyword_theme = random.choice(themes['keywords'])
-    
+    # Build the prompt with emphasis on using the provided name
     prompt = (
-        f"Design a cohesive Magic: The Gathering card centered around a {color_str} {creature_theme}:\n"
-        f"- Name: Thematic name (max 40 chars) that reflects a {creature_theme}'s nature.\n"
+        f"Design a cohesive Magic: The Gathering card named '{name}':\n"
+        f"- Name: {name}\n"
         f"- ManaCost: {mana_cost_guidance if mana_cost_guidance else 'Balanced mana cost with curly braces {X}.'}\n"
         f"- Type: {card_type}\n"
         f"- Color: {color_str}\n"
-        f"- Abilities: Create abilities that reflect the {creature_theme}'s nature:\n"
-        f"  * Must incorporate {keyword_theme} in a way that makes sense for a {creature_theme}\n"
-        "  * Each ability should directly relate to the creature's identity\n"
+        f"- Abilities: Create abilities that reflect the name and theme:\n"
+        "  * Each ability should relate to the card's name\n"
         "  * Keep abilities under 150 characters and use established mechanics\n"
-        f"- PowerToughness: Stats should reflect what you'd expect from a {creature_theme}.\n"
-        f"- FlavorText: One sentence (max 120 chars) that captures the {creature_theme}'s essence.\n"
+        "- PowerToughness: Stats that fit the theme.\n"
+        "- FlavorText: One sentence (max 120 chars) that captures the card's essence.\n"
         f"- Rarity: {rarity_prompt}\n"
-        "Return a JSON object with these fields. Ensure every aspect of the card reinforces its core identity."
+        "Return a JSON object with these fields. Ensure every aspect of the card reinforces its identity based on the name."
+    ) if name else (
+        f"Design a cohesive Magic: The Gathering card centered around a {color_str} theme:\n"
+        f"- Name: Create a thematic name (max 40 chars).\n"
+        f"- ManaCost: {mana_cost_guidance if mana_cost_guidance else 'Balanced mana cost with curly braces {X}.'}\n"
+        f"- Type: {card_type}\n"
+        f"- Color: {color_str}\n"
+        f"- Abilities: Create thematic abilities:\n"
+        "  * Each ability should relate to the card's identity\n"
+        "  * Keep abilities under 150 characters and use established mechanics\n"
+        "- PowerToughness: Stats that fit the theme.\n"
+        "- FlavorText: One sentence (max 120 chars) that captures the card's essence.\n"
+        f"- Rarity: {rarity_prompt}\n"
+        "Return a JSON object with these fields. Ensure every aspect of the card is thematically cohesive."
     )
     
     return prompt

@@ -52,8 +52,8 @@ def parse_card_data_from_text(text: str) -> Dict[str, Any]:
         "rarity": "Common"
     }
 
-def generate_card(rarity: str = None) -> Dict[str, Any]:
-    """Generate a card with optional rarity."""
+def generate_card(rarity: str = None, name: str = None) -> Dict[str, Any]:
+    """Generate a card with optional rarity and name."""
     # Ensure random is properly seeded for this process
     random.seed()
     

@@ -223,7 +223,7 @@
         }
 
         // Protected routes that require authentication
-        const protectedRoutes = ['/cards', '/packs'];
+        const protectedRoutes = ['/cards'];
 
         document.addEventListener('DOMContentLoaded', function() {
             const auth = firebase.auth();
@@ -274,8 +274,8 @@
                     </button>
                 </div>
                 <!-- Auth-required links -->
-                <a href="/packs" class="hover:text-blue-200 auth-required hidden">Buy Packs</a>
                 <a href="/cards" class="hover:text-blue-200 auth-required hidden">Card Library</a>
+                <a href="/create" class="hover:text-blue-200 auth-required hidden">Create Card</a>
                 <!-- Auth links -->
                 <a href="/auth" class="hover:text-blue-200 auth-login">Login</a>
                 <button class="hover:text-blue-200 auth-logout hidden" onclick="handleLogout()">Logout</button>

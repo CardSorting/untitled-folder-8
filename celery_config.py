@@ -1,13 +1,16 @@
 from celery import Celery
 import ssl
 
-# Redis URL with SSL configuration
+# Redis URL with SSL configuration (for credits)
 REDIS_URL = 'rediss://:AbWDAAIjcDFkZTYzZmU4NzZhNjg0YTNhYjkwMzk2NTNiNTQ5YjE1MHAxMA@adapting-panther-46467.upstash.io:6379?ssl_cert_reqs=CERT_NONE'
 
-# Initialize Celery with Redis backend
+# LavinMQ URL (for card operations)
+LAVINMQ_URL = 'amqps://wfnozibh:4T_jdMaK65ElpLne0WeKkrzWW0v3BARP@possum.lmq.cloudamqp.com/wfnozibh'
+
+# Initialize Celery with LavinMQ broker and Redis backend
 celery_app = Celery(
     'playmoretcg',
-    broker=REDIS_URL,
+    broker=LAVINMQ_URL,
     backend=REDIS_URL
 )
 
@@ -23,8 +26,10 @@ celery_app.conf.update(
         'ssl_cert_reqs': ssl.CERT_NONE,
         'ssl_ca_certs': None
     },
-    broker_use_ssl={
-        'ssl_cert_reqs': ssl.CERT_NONE,
-        'ssl_ca_certs': None
+    task_routes={
+        'tasks.create_card_task': {'queue': 'card_creation'},
+        'tasks.process_pack_opening': {'queue': 'pack_opening'},
+        'tasks.get_credit_balance': {'queue': 'credits'},
+        'tasks.claim_daily_credits': {'queue': 'credits'}
     }
 )

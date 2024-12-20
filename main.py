@@ -35,6 +35,7 @@ from tasks import (
     process_pack_opening,
     get_credit_balance,
     claim_daily_credits,
+    create_card_task,
     PACK_CONFIG,
     PACK_ERRORS,
     PackError
@@ -144,6 +145,80 @@ async def get_current_user(request: Request, db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"Error verifying Firebase token: {str(e)}")
         return None
+
+@app.get("/create", response_class=HTMLResponse)
+async def create_card_page(request: Request, context: dict = Depends(get_template_context)):
+    """Render the card creation page."""
+    return templates.TemplateResponse("create_card.html", context)
+
+@app.get("/create-card/status/{task_id}")
+async def get_card_creation_status(
+    task_id: str,
+    current_user: UserModel = Depends(get_current_user)
+):
+    """Get the status of a card creation task."""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    try:
+        task_result = AsyncResult(task_id)
+        
+        if not task_result.ready():
+            status = "pending"
+            result = None
+            error = None
+        else:
+            if task_result.successful():
+                status = "completed"
+                result = task_result.get()
+                error = None
+            else:
+                status = "failed"
+                result = None
+                error = str(task_result.result)
+        
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": status,
+                "result": result,
+                "error": error
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error getting card creation status: {e}")
+        raise HTTPException(status_code=500, detail="Error getting task status")
+
+@app.post("/create-card")
+async def create_card(
+    request: Request,
+    current_user: UserModel = Depends(get_current_user)
+):
+    """Create a card with user-provided name using Celery task."""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    try:
+        # Get card name from request body
+        data = await request.json()
+        name = data.get('name')
+        if not name:
+            raise HTTPException(status_code=400, detail="Card name is required")
+        
+        # Submit card creation task to Celery
+        task = create_card_task.delay(current_user.firebase_id, name)
+        
+        return JSONResponse(
+            status_code=202,
+            content={
+                "message": "Card creation task submitted",
+                "task_id": task.id
+            }
+        )
+        
+    except Exception as e:
+        logger.error(f"Error submitting card creation task: {str(e)}")
+        raise HTTPException(status_code=500, detail="Error creating card")
 
 @app.get("/", response_class=HTMLResponse)
 async def landing_page(request: Request, context: dict = Depends(get_template_context)):
@@ -452,7 +527,7 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
             pass  # Ignore any errors during emergency close
 
 # Add packs to protected routes
-protectedRoutes = ['/generate', '/cards', '/packs']
+protectedRoutes = ['/generate', '/cards', '/packs', '/create', '/create-card']
 
 @app.post("/admin/generate-card")
 async def generate_admin_card(
