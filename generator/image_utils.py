@@ -33,11 +33,8 @@ def generate_card_image(card_data: Dict[str, Any]) -> Tuple[str, str]:
         from generator.prompt_utils import create_dalle_prompt
         prompt = create_dalle_prompt(card_data)
         
-        # Create final prompt with context
-        final_prompt = (
-            "As a professional Magic: The Gathering artist, create an illustration that perfectly captures "
-            "this card's unique identity. The artwork must be centered, detailed, and iconic. " + prompt
-        )
+        # Use prompt directly - it already contains all necessary context
+        final_prompt = prompt
         
         # Log DALL-E request
         logger.info("\nSending request to DALL-E API:")

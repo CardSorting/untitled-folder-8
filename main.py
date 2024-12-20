@@ -290,20 +290,29 @@ async def create_card(
             
             logger.info(f"Card generated successfully: {db_card.name}")
             
-            # Prepare response with all required fields
-            response_content = {
+            # Save complete card data (excluding temporary DALL-E URL)
+            card_data = {
                 "id": db_card.id,
                 "name": db_card.name,
-                "manaCost": db_card.card_data.get('manaCost'),
-                "type": db_card.card_data.get('type'),
-                "text": db_card.card_data.get('text'),
+                "manaCost": standardized_card_data.get('manaCost'),
+                "type": standardized_card_data.get('type'),
+                "text": standardized_card_data.get('text', ''),
                 "rarity": db_card.rarity,
-                "power": db_card.card_data.get('power'),
-                "toughness": db_card.card_data.get('toughness'),
+                "power": standardized_card_data.get('power'),
+                "toughness": standardized_card_data.get('toughness'),
                 "set_name": db_card.set_name,
                 "card_number": db_card.card_number,
-                "image_path": db_card.image_path
+                "image_path": b2_url,
+                "color": standardized_card_data.get('color', []),
+                "flavorText": standardized_card_data.get('flavorText', '')
             }
+            
+            # Update card_data in database
+            db_card.card_data = card_data
+            db.commit()
+            
+            # Use the complete card data for response
+            response_content = card_data
             logger.debug(f"Response content: {response_content}")
             
             return JSONResponse(
@@ -507,12 +516,7 @@ async def claim_card(
         raise HTTPException(status_code=500, detail="Error claiming card")
 
 from task_manager import task_manager
-
-# Pack opening cost
-PACK_COST = 100  # Credits required to open a pack
-
-# Pack opening cost
-PACK_COST = 100  # Credits required to open a pack
+from pack_handler import PACK_CONFIG, PACK_ERRORS, PackError
 
 @app.post("/credits/add")
 async def add_credits(
@@ -627,26 +631,12 @@ async def open_pack(
     if not current_user:
         raise HTTPException(status_code=401, detail="Authentication required")
     
-    # Check if user has enough credits
-    if not await current_user.has_enough_credits(PACK_COST):
-        raise HTTPException(
-            status_code=402,
-            detail=f"Insufficient credits. Pack opening costs {PACK_COST} credits."
-        )
-    
     try:
-        # Deduct credits first
-        success = await current_user.spend_credits(
-            db=db,
-            amount=PACK_COST,
-            description="Opened a booster pack",
-            transaction_type="pack_opening"
-        )
-        
-        if not success:
+        # Check if user has enough credits
+        if not await current_user.has_enough_credits(PACK_CONFIG["cost"]):
             raise HTTPException(
                 status_code=402,
-                detail="Failed to deduct credits"
+                detail=PACK_ERRORS["insufficient_credits"]
             )
         
         # Submit pack opening task
@@ -668,9 +658,14 @@ async def open_pack(
             }
         )
     
+    except HTTPException:
+        raise
+    except PackError as e:
+        logger.warning(f"Pack opening error for user {current_user.firebase_id}: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error submitting pack opening task: {e}")
-        raise HTTPException(status_code=500, detail="Error submitting pack opening task")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred while opening the pack")
 
 @app.get("/packs/status/{task_id}")
 async def get_pack_status(
@@ -697,7 +692,14 @@ async def get_pack_status(
         if task.status == "completed":
             response["result"] = task.result
         elif task.status == "failed":
-            response["error"] = task.error
+            # Map pack errors to user-friendly messages
+            error_msg = task.error
+            if isinstance(task.error, str):
+                for err_key, err_msg in PACK_ERRORS.items():
+                    if err_msg in task.error:
+                        error_msg = err_msg
+                        break
+            response["error"] = error_msg
         
         return JSONResponse(status_code=200, content=response)
     

@@ -27,42 +27,30 @@ def get_next_set_name_and_number() -> Tuple[str, int, int]:
     return DEFAULT_SET_NAME, set_number, random.randint(1, CARD_NUMBER_LIMIT)
 
 def parse_card_data_from_text(text: str) -> Dict[str, Any]:
-    """Attempt to parse card data from a text response when JSON parsing fails."""
-    logger.warning(f"Falling back to text parsing for card data: {text[:200]}...")
+    """Parse card data from text when JSON parsing fails."""
+    logger.warning(f"Attempting to parse card data from text: {text[:200]}...")
     
-    # Simple heuristics to extract card data
-    default_card = {
-        "name": "Parsed Card",
-        "manaCost": "{2}{R}",
-        "type": "Creature",
-        "text": "When this creature enters the battlefield, deal 2 damage to target creature or player.",
+    # Extract name if present
+    name_match = re.search(r'"name"\s*:\s*"([^"]+)"', text)
+    name = name_match.group(1) if name_match else None
+    
+    if not name:
+        raise ValueError("Could not extract card name from response")
+    
+    # Extract other fields if possible
+    mana_cost_match = re.search(r'"manaCost"\s*:\s*"([^"]+)"', text)
+    type_match = re.search(r'"type"\s*:\s*"([^"]+)"', text)
+    text_match = re.search(r'"text"\s*:\s*"([^"]+)"', text)
+    
+    return {
+        "name": name,
+        "manaCost": mana_cost_match.group(1) if mana_cost_match else "{2}",
+        "type": type_match.group(1) if type_match else "Creature",
+        "text": text_match.group(1) if text_match else "",
         "power": "2",
         "toughness": "2",
-        "rarity": "Uncommon"
+        "rarity": "Common"
     }
-    
-    # Try to extract name from text
-    name_match = re.search(r'"name"\s*:\s*"([^"]+)"', text)
-    if name_match:
-        default_card["name"] = name_match.group(1)
-    
-    return default_card
-
-def get_default_value_for_field(field: str) -> Any:
-    """Provide default values for missing card fields."""
-    default_values = {
-        'name': 'Unnamed Card',
-        'manaCost': '{1}',
-        'type': 'Creature',
-        'text': 'No special abilities.',
-        'power': '1',
-        'toughness': '1',
-        'rarity': 'Common',
-        'set_name': 'GEN',
-        'set_number': 1,
-        'card_number': '001'
-    }
-    return default_values.get(field, 'Unknown')
 
 def generate_card(rarity: str = None) -> Dict[str, Any]:
     """Generate a card with optional rarity."""
@@ -79,9 +67,8 @@ def generate_card(rarity: str = None) -> Dict[str, Any]:
             prompt = generate_card_prompt(rarity)
             
             # Generate with GPT-4
-            logger.info("Generating card data with GPT-4...")
             response = openai_client.chat.completions.create(
-                model="gpt-4o-mini-2024-07-18",
+                model="gpt-4",
                 messages=[
                     {"role": "system", "content": "You are a Magic: The Gathering card designer. Create balanced and thematic cards that follow the game's rules and mechanics. Keep abilities clear and concise, using established keyword mechanics where possible. Limit flavor text to one or two impactful sentences."},
                     {"role": "user", "content": prompt}
@@ -149,13 +136,29 @@ def generate_card(rarity: str = None) -> Dict[str, Any]:
                 'card_number': card_data['card_number'],
                 'dalle_url': dalle_url,
                 'b2_url': b2_url,
-                'image_path': b2_url if image_success else None
+                'image_path': b2_url
             }
             
         except Exception as e:
+            logger.error(f"Card generation attempt {attempt + 1} failed: {e}")
             if attempt < max_attempts - 1:
-                logger.error(f"Attempt {attempt + 1} failed: {e}")
                 continue
             raise ValueError(f"Card generation failed after {max_attempts} attempts: {str(e)}")
     
     raise ValueError("Card generation failed for unknown reason")
+
+def get_default_value_for_field(field: str) -> Any:
+    """Provide default values for missing card fields."""
+    default_values = {
+        'name': 'Unnamed Card',
+        'manaCost': '{1}',
+        'type': 'Creature',
+        'text': 'No special abilities.',
+        'power': '1',
+        'toughness': '1',
+        'rarity': 'Common',
+        'set_name': 'GEN',
+        'set_number': 1,
+        'card_number': '001'
+    }
+    return default_values.get(field, 'Unknown')

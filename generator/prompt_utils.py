@@ -1,5 +1,5 @@
 import random
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Union
 from card_models import Rarity
 
 # Constants
@@ -153,132 +153,159 @@ def generate_card_prompt(rarity: str = None) -> str:
         mana_cost_guidance = f"Use {' and '.join(colors)} mana symbols with optional generic mana. "
         mana_cost_guidance += f"Example: {'{2}' + color_symbols} for a 4-cost card."
     
-    # Build the prompt with emphasis on concise, focused design
+    # Build the prompt with emphasis on thematic cohesion
+    creature_theme = random.choice(themes['creatures'][:2])
+    keyword_theme = random.choice(themes['keywords'])
+    
     prompt = (
-        f"Design a focused Magic: The Gathering card with these specifications:\n"
-        f"- Name: Brief, thematic name (max 40 chars) using elements from {', '.join(themes['creatures'][:2])}.\n"
+        f"Design a cohesive Magic: The Gathering card centered around a {color_str} {creature_theme}:\n"
+        f"- Name: Thematic name (max 40 chars) that reflects a {creature_theme}'s nature.\n"
         f"- ManaCost: {mana_cost_guidance if mana_cost_guidance else 'Balanced mana cost with curly braces {X}.'}\n"
         f"- Type: {card_type}\n"
         f"- Color: {color_str}\n"
-        "- Abilities: Create 1-3 concise, synergistic abilities that:\n"
-        f"  * Incorporate these keywords: {', '.join(random.sample(themes['keywords'], min(2, len(themes['keywords']))))}\n"
-        "  * Focus on clear, direct effects\n"
-        "  * Each ability should be under 150 characters\n"
-        "  * Prefer established keyword mechanics when possible\n"
-        "- PowerToughness: For creatures, use balanced stats matching the mana cost.\n"
-        f"- FlavorText: One impactful sentence (max 120 chars) capturing the card's essence.\n"
+        f"- Abilities: Create abilities that reflect the {creature_theme}'s nature:\n"
+        f"  * Must incorporate {keyword_theme} in a way that makes sense for a {creature_theme}\n"
+        "  * Each ability should directly relate to the creature's identity\n"
+        "  * Keep abilities under 150 characters and use established mechanics\n"
+        f"- PowerToughness: Stats should reflect what you'd expect from a {creature_theme}.\n"
+        f"- FlavorText: One sentence (max 120 chars) that captures the {creature_theme}'s essence.\n"
         f"- Rarity: {rarity_prompt}\n"
-        "Return a JSON object with these fields. Keep text concise and focused."
+        "Return a JSON object with these fields. Ensure every aspect of the card reinforces its core identity."
     )
     
     return prompt
 
+def ability_to_visual(text: Union[str, List[Dict[str, str]]]) -> List[str]:
+    """Convert card abilities into visual descriptions."""
+    visuals = []
+    
+    # Handle text that's a list of ability objects
+    if isinstance(text, list):
+        text_str = ' '.join(ability['Text'] for ability in text)
+    else:
+        text_str = text
+    
+    text_lower = text_str.lower()
+    
+    # Movement and stance
+    if 'flying' in text_lower:
+        visuals.append('with graceful wings')
+    if 'first strike' in text_lower:
+        visuals.append('in dynamic pose')
+    if 'deathtouch' in text_lower:
+        visuals.append('with sharp features')
+    if 'trample' in text_lower:
+        visuals.append('with strong build')
+    if 'vigilance' in text_lower:
+        visuals.append('in ready stance')
+    if 'haste' in text_lower:
+        visuals.append('in swift motion')
+    
+    # Energy and aura
+    if any(x in text_lower for x in ['destroy', 'damage']):
+        visuals.append('with intense aura')
+    if 'draw' in text_lower:
+        visuals.append('with bright aura')
+    if any(x in text_lower for x in ['heal', 'life']):
+        visuals.append('with soft glow')
+    if 'counter' in text_lower:
+        visuals.append('with shimmering aura')
+    if 'exile' in text_lower:
+        visuals.append('with bright glow')
+    if any(x in text_lower for x in ['dark', 'black']):
+        visuals.append('with deep shadows')
+    if 'scry' in text_lower:
+        visuals.append('with glowing eyes')
+    
+    # State changes
+    if 'transform' in text_lower:
+        visuals.append('mid-transformation')
+    if 'phase' in text_lower:
+        visuals.append('partially transparent')
+    
+    return visuals
+
+def extract_themes_from_name(name: str) -> List[str]:
+    """Extract thematic elements from card name."""
+    themes = []
+    name_lower = name.lower()
+    
+    # Emotional/personality themes
+    if any(word in name_lower for word in ['dreaded', 'dread', 'horror', 'terror', 'nightmare']):
+        themes.append("terrifying")
+        themes.append("inspiring fear")
+        themes.append("with an aura of dread")
+    if any(word in name_lower for word in ['ancient', 'elder', 'old', 'eternal']):
+        themes.append("ancient")
+        themes.append("weathered by time")
+        themes.append("with archaic markings")
+    if any(word in name_lower for word in ['primal', 'wild', 'savage', 'feral']):
+        themes.append("primal")
+        themes.append("untamed")
+        themes.append("with raw, natural power")
+    if any(word in name_lower for word in ['noble', 'royal', 'lord', 'sovereign']):
+        themes.append("noble")
+        themes.append("regal bearing")
+        themes.append("with majestic presence")
+    
+    # Physical characteristics
+    if any(word in name_lower for word in ['giant', 'colossal', 'titan', 'massive']):
+        themes.append("enormous")
+        themes.append("towering")
+        themes.append("dominating the scene")
+    if any(word in name_lower for word in ['swift', 'quick', 'rapid', 'nimble']):
+        themes.append("agile")
+        themes.append("in swift motion")
+        themes.append("with fluid movement")
+    if any(word in name_lower for word in ['shadow', 'dark', 'night', 'void', 'black']):
+        themes.append("shrouded in darkness")
+        themes.append("with deep shadows")
+        themes.append("emanating dark energy")
+    
+    # Combat and power themes
+    if any(word in name_lower for word in ['warrior', 'fighter', 'slayer', 'knight']):
+        themes.append("battle-ready")
+        themes.append("in combat stance")
+    if any(word in name_lower for word in ['mage', 'wizard', 'sorcerer', 'mystic']):
+        themes.append("channeling magical energy")
+        themes.append("surrounded by arcane symbols")
+    if any(word in name_lower for word in ['demon', 'devil', 'fiend', 'hell']):
+        themes.append("with demonic features")
+        themes.append("radiating malevolent energy")
+    
+    return themes
+
 def create_dalle_prompt(card_data: Dict[str, Any]) -> str:
     """Create a highly detailed DALL-E prompt that strongly adheres to the card's identity."""
-    # Extract all relevant card details
-    name = card_data.get('name', '')
+    # Extract themes from name without using the name itself
+    name_themes = extract_themes_from_name(card_data.get('name', ''))
     card_type = card_data.get('type', '')
     color = card_data.get('color', '')
     text = card_data.get('text', '')
     power = card_data.get('power', '')
     toughness = card_data.get('toughness', '')
     rarity = card_data.get('rarity', '')
-    flavor_text = card_data.get('flavorText', '')
     color_str = '/'.join(color) if isinstance(color, list) else color
     
-    # Initialize personality traits list
-    personality_traits = []
+    # Get visual descriptions from abilities
+    ability_visuals = ability_to_visual(text)
     
-    # Initialize lists for visual elements
-    ability_visuals = []
+    # Extract creature types
     creature_types = []
-    
-    # Analyze text for ability-based visual elements first
-    if text:
-        if 'destroy' in text.lower():
-            ability_visuals.append('emanating destructive energy')
-        if 'draw' in text.lower():
-            ability_visuals.append('surrounded by floating magical scrolls')
-        if 'damage' in text.lower():
-            ability_visuals.append('channeling aggressive energy')
-        if 'heal' in text.lower() or 'life' in text.lower():
-            ability_visuals.append('glowing with restorative energy')
-        if 'counter' in text.lower():
-            ability_visuals.append('radiating disruptive magical energy')
-        if 'enters the battlefield' in text.lower():
-            ability_visuals.append('materializing with powerful purpose')
-    
-    # Extract and infer creature types
     if 'type' in card_data:
         type_parts = card_data['type'].split('—')
         if len(type_parts) > 1:
             creature_types = [t.strip() for t in type_parts[1].split()]
-        else:
-            # Extract descriptive words from name for personality traits
-            name_lower = name.lower()
-            words = name_lower.replace("'s", '').split()
-            
-            # Build personality traits from name words
-            for word in words:
-                # Skip common words
-                if word in ['the', 'of', 'and', 'in', 'on', 'at', 'to']:
-                    continue
-                    
-                # Add word-based traits that enhance the character's identity
-                if word in name_lower:
-                    # Add the word itself as a trait if it's descriptive
-                    personality_traits.append(word)
-                    
-                    # Add any ability-based visuals that match the word
-                    if 'wisdom' in word or 'insight' in word:
-                        ability_visuals.append('radiating mental energy')
-                    elif 'flame' in word or 'fire' in word:
-                        ability_visuals.append('emanating intense heat')
-                    elif 'shadow' in word or 'dark' in word:
-                        ability_visuals.append('wreathed in shadows')
-                    elif 'light' in word or 'bright' in word:
-                        ability_visuals.append('glowing with inner light')
-                    elif 'storm' in word or 'thunder' in word:
-                        ability_visuals.append('crackling with electric energy')
     
-    # Extract mana cost details
-    mana_cost = card_data.get('manaCost', '')
-    mana_value = sum(c.isdigit() and int(c) or 1 for c in mana_cost if c.isdigit() or c in 'WUBRG')
-    
-    # Enhanced color-specific visual traits
+    # Get color-based traits
     color_traits = {
-        'White': 'radiating divine light, adorned with flowing robes and holy symbols, emanating purity and order',
-        'Blue': 'surrounded by arcane runes, with mystical patterns and intellectual demeanor, showing deep wisdom',
-        'Black': 'shrouded in dark energy, with sinister features and corrupted elements, exuding darkness',
-        'Red': 'emanating fierce energy and primal power, with passionate expression and dynamic posture, burning with intensity',
-        'Green': 'displaying natural vigor and primal strength, with organic features and earthen elements'
+        'White': 'glowing with bright light',
+        'Blue': 'with mystical aura',
+        'Black': 'with shadowy presence',
+        'Red': 'with fiery energy',
+        'Green': 'with natural strength'
     }
     
-    # Color-specific creature enhancements
-    color_creature_traits = {
-        'White': {
-            'Angel': 'with majestic wings of pure light and divine armor',
-            'Knight': 'in gleaming plate armor with holy symbols',
-        },
-        'Blue': {
-            'Leviathan': 'with ancient wisdom in its eyes, covered in mystical runes',
-            'Wizard': 'wielding complex magical implements and scholarly attire',
-        },
-        'Black': {
-            'Demon': 'with corrupted features and malevolent presence',
-            'Zombie': 'showing signs of undeath and decay',
-        },
-        'Red': {
-            'Dragon': 'with scales of burning intensity and fierce expression',
-            'Warrior': 'with battle-scarred armor and aggressive stance',
-        },
-        'Green': {
-            'Beast': 'with primal strength and natural adaptations',
-            'Elemental': 'formed from living natural elements',
-        }
-    }
-    
-    # Get color-specific visual elements
     color_visuals = []
     if isinstance(color, list):
         for c in color:
@@ -286,182 +313,146 @@ def create_dalle_prompt(card_data: Dict[str, Any]) -> str:
                 color_visuals.append(color_traits[c])
     elif color in color_traits:
         color_visuals.append(color_traits[color])
-    color_visual_desc = ', '.join(color_visuals) if color_visuals else ''
     
-    # Extract keywords and abilities from text
-    keywords = []
-    if text:
-        # Common MTG keywords and their visual representations
-        keyword_visuals = {
-            'Flying': 'with majestic wings spread wide, hovering gracefully',
-            'First Strike': 'in an aggressive combat stance, weapon poised to strike',
-            'Deathtouch': 'with deadly features like venomous fangs or toxic secretions',
-            'Haste': 'caught in mid-sprint, body leaning forward with explosive energy',
-            'Vigilance': 'in an alert defensive stance, eyes scanning for threats',
-            'Trample': 'with massive, imposing physique and unstoppable momentum',
-            'Lifelink': 'with ethereal life-essence flowing through their form',
-            'Menace': 'with terrifying features and intimidating presence',
-            'Reach': 'with elongated limbs or extraordinary height',
-            'Flash': 'partially ethereal, as if materializing from thin air',
-            'Defender': 'with defensive armor and protective stance',
-            'Hexproof': 'surrounded by protective magical barriers',
-            'Indestructible': 'with impossibly tough armor or crystalline skin',
-            'Double Strike': 'dual-wielding weapons or with multiple striking limbs',
-            'Scry': 'with glowing eyes showing prophetic vision',
-            'Counter': 'radiating anti-magic energy',
-            'Sacrifice': 'with dark ritualistic markings',
-            'Transform': 'showing signs of metamorphosis'
-        }
-        keywords = [k for k in keyword_visuals.keys() if k.lower() in text.lower()]
-        
-    # Add more specific ability-based visual elements based on the card's identity
-    if 'insight' in name.lower() or 'wisdom' in name.lower():
-        ability_visuals.extend([
-            'radiating waves of mental energy',
-            'eyes glowing with ancient knowledge',
-            'surrounded by floating mystical symbols'
-        ])
-    if 'damage' in text.lower() and 'enters the battlefield' in text.lower():
-        ability_visuals.extend([
-            'crackling with barely contained energy',
-            'showing signs of imminent power release'
-        ])
+    # Build physical description
+    physical_desc = ""
+    if power and toughness:
+        if int(power) > int(toughness):
+            physical_desc = "powerful and aggressive physique"
+        elif int(power) < int(toughness):
+            physical_desc = "sturdy and resilient form"
+        else:
+            physical_desc = "well-balanced physical form"
     
-    # Get rarity-based style guidance
+    # Get rarity-based style
     rarity_style = {
-        'Common': 'practical yet effective design, focusing on fundamental aspects',
-        'Uncommon': 'distinctive and specialized design with unique characteristics',
-        'Rare': 'elaborate and powerful design with complex, intricate details',
-        'Mythic Rare': 'masterful and awe-inspiring design with extraordinary presence'
-    }.get(rarity, 'distinctive design')
+        'Common': 'practical yet effective',
+        'Uncommon': 'distinctive and specialized',
+        'Rare': 'elaborate and powerful',
+        'Mythic Rare': 'masterful and awe-inspiring'
+    }.get(rarity, 'distinctive')
     
-    # Add mechanical personality traits
-    if mana_value <= 2:
-        personality_traits.append('swift and agile')
-    elif mana_value >= 6:
-        personality_traits.append('powerful and commanding')
-    if 'Legendary' in card_type:
-        personality_traits.append('noble and distinguished')
-    personality_desc = ', '.join(personality_traits) if personality_traits else ''
-    
-    # Start with the core subject description based on the card's complete identity
     if 'Creature' in card_type:
+        # Get creature type details
         creature_description = ' '.join(creature_types) if creature_types else card_type
         
-        # Build enhanced physical description based on power/toughness and name
-        physical_desc = ""
+        # Build detailed creature description
+        creature_details = []
+        
+        # Add size and power description
         if power and toughness:
-            size_desc = ""
-            if 'leviathan' in name.lower() or 'giant' in name.lower():
-                size_desc = "massive and imposing, "
-            elif 'tiny' in name.lower() or 'small' in name.lower():
-                size_desc = "small but potent, "
-                
-            if int(power) > int(toughness):
-                physical_desc = f"{size_desc}powerful and aggressive physique with prominent offensive features, showing clear signs of its combat prowess"
-            elif int(power) < int(toughness):
-                physical_desc = f"{size_desc}sturdy and resilient form with impressive defensive adaptations, built to endure"
-            else:
-                physical_desc = f"{size_desc}well-balanced and harmonious physical form, showing equal measures of strength and resilience"
+            if int(power) >= 6:
+                creature_details.append("massive")
+            elif int(power) >= 4:
+                creature_details.append("powerful")
+            if int(toughness) >= 6:
+                creature_details.append("heavily armored")
+            elif int(toughness) >= 4:
+                creature_details.append("well-protected")
         
-        # Include keywords in visual description
-        keyword_desc = ""
-        if keywords:
-            keyword_traits = [keyword_visuals[k] for k in keywords if k in keyword_visuals]
-            if keyword_traits:
-                keyword_desc = f", {', '.join(keyword_traits)}"
-        
-        # Add enhanced ability-based visual elements
-        if ability_visuals:
-            # Add intensity based on mana value
-            intensity = "subtle" if mana_value <= 2 else "prominent" if mana_value <= 4 else "overwhelming"
-            ability_visuals = [f"{intensity} {visual}" for visual in ability_visuals]
-            ability_desc = f", {', '.join(ability_visuals)}"
-        else:
-            ability_desc = ""
-            
-        # Add color-specific creature enhancements if applicable
-        creature_enhancement = ""
+        # Add color-specific details
         if isinstance(color, list):
             for c in color:
-                if c in color_creature_traits:
-                    for creature_type in creature_types:
-                        if creature_type in color_creature_traits[c]:
-                            creature_enhancement = f", {color_creature_traits[c][creature_type]}"
-                            break
-        elif color in color_creature_traits:
-            for creature_type in creature_types:
-                if creature_type in color_creature_traits[color]:
-                    creature_enhancement = f", {color_creature_traits[color][creature_type]}"
-                    break
+                if c == 'White':
+                    creature_details.append("radiating divine light")
+                elif c == 'Blue':
+                    creature_details.append("surrounded by arcane energy")
+                elif c == 'Black':
+                    creature_details.append("wreathed in dark shadows")
+                elif c == 'Red':
+                    creature_details.append("emanating fierce power")
+                elif c == 'Green':
+                    creature_details.append("pulsing with primal energy")
         
-        # Incorporate flavor text for mood and personality
-        mood_desc = f", expressing {flavor_text}" if flavor_text else ""
-        personality_desc = f", appearing {personality_desc}" if personality_desc else ""
+        # Add creature type specific details
+        for ctype in creature_types:
+            if ctype in ['Dragon', 'Angel']:
+                creature_details.append("with majestic wings spread wide")
+            elif ctype in ['Demon', 'Horror']:
+                creature_details.append("with twisted, nightmarish features")
+            elif ctype in ['Warrior', 'Knight']:
+                creature_details.append("in ornate battle armor")
+            elif ctype in ['Wizard', 'Shaman']:
+                creature_details.append("wielding mystical energies")
+            elif ctype == 'Rat':
+                creature_details.append("with sharp fangs and glowing eyes")
+            elif ctype == 'Giant':
+                creature_details.append("towering and muscular")
         
-        # Add color-specific visual elements
-        color_desc = f", {color_visual_desc}" if color_visual_desc else ""
+        # Add ability-based details
+        if ability_visuals:
+            creature_details.extend(ability_visuals[:2])
         
-        style = (
-            f"Professional fantasy illustration of {name}, a {color_str} {creature_description} "
-            f"with a {rarity_style}. Create a detailed character that perfectly embodies "
-            f"'{name}' with {physical_desc}{keyword_desc}{ability_desc}{color_desc}"
-            f"{creature_enhancement}{personality_desc}{mood_desc}. "
-            f"The character should demonstrate its abilities: {text}. "
-            "Character must be centered in frame against a pure white background, with strong "
-            "attention to distinctive features, anatomy, and characteristic details. "
-            "The character must be the ONLY element - NO background elements, "
-            "NO special effects, NO decorative elements, NO patterns. "
-            "Focus on making the character's identity immediately recognizable and "
-            "ensuring every visual element reinforces their unique role and abilities."
-        )
+        # Add name-derived themes
+        creature_details.extend(name_themes)
+        
+        # Combine all details, removing duplicates while preserving order
+        all_details = []
+        seen = set()
+        for detail in creature_details:
+            if detail.lower() not in seen:
+                all_details.append(detail)
+                seen.add(detail.lower())
+        
+        details_str = ', '.join(filter(None, all_details))
+        
+        # Build final prompt with specific creature focus
+        return f"Detailed fantasy concept art of a {creature_description.lower()}, {details_str}, dramatic lighting, intricate details, cinematic composition, professional quality. White background."
     else:
-        # For non-creature cards, create more specific object representations
+        # Handle non-creature cards with detailed descriptions
+        spell_details = []
+        
+        # Add color-specific magical effects
+        if isinstance(color, list):
+            for c in color:
+                if c == 'White':
+                    spell_details.append("radiating pure white energy")
+                elif c == 'Blue':
+                    spell_details.append("swirling with mystical blue mist")
+                elif c == 'Black':
+                    spell_details.append("emanating dark tendrils of power")
+                elif c == 'Red':
+                    spell_details.append("crackling with intense red flames")
+                elif c == 'Green':
+                    spell_details.append("pulsing with vibrant natural energy")
+        
+        # Add type-specific details
         if 'Enchantment' in card_type:
-            style = (
-                f"Professional illustration of {name}, a {color_str} magical enchantment with "
-                f"a {rarity_style}. Create a mystical crystal or orb that embodies: {text}. "
-                f"The object should express the essence of '{name}'{mood_desc}. "
-                f"Incorporate {color_visual_desc} into the crystal/orb's appearance. "
-                "Object must be floating in empty space, centered against a pure white background. "
-                "NO effects, NO patterns, NO decorative elements. "
-                "Think high-end jewelry photography with perfect lighting, ensuring the object's "
-                "form clearly suggests its magical purpose."
-            )
+            base_desc = "mystical crystalline formation"
+            spell_details.append("floating in mid-air")
+            spell_details.append("with ethereal wisps of energy")
         elif 'Artifact' in card_type:
-            style = (
-                f"Professional illustration of {name}, a {color_str} magical artifact with "
-                f"a {rarity_style}. Create a detailed magical object that embodies: {text}. "
-                f"The artifact should clearly represent '{name}'{mood_desc}. "
-                f"Design should suggest its function: {', '.join(ability_visuals) if ability_visuals else text}. "
-                "Object must be floating in empty space, centered against a pure white background. "
-                "NO effects, NO patterns, NO decorative elements. "
-                "Think museum-quality artifact photography with perfect lighting, ensuring every "
-                "detail of the artifact's construction suggests its magical purpose."
-            )
-        elif 'Instant' in card_type or 'Sorcery' in card_type:
-            style = (
-                f"Professional illustration of {name}, a {color_str} magical spell with "
-                f"a {rarity_style}. Create a mystical rune or sigil that embodies: {text}. "
-                f"The symbol should capture the essence of '{name}'{mood_desc}. "
-                f"Incorporate {color_visual_desc} into the symbol's design. "
-                f"The rune's form should suggest its effect: {', '.join(ability_visuals) if ability_visuals else text}. "
-                "Symbol must be floating in empty space, centered against a pure white background. "
-                "NO effects, NO patterns, NO decorative elements. "
-                "Think ancient magical symbol with perfect clarity, where every line and curve "
-                "suggests the spell's purpose and power."
-            )
+            base_desc = "intricate magical artifact"
+            spell_details.append("with ornate metalwork")
+            spell_details.append("with glowing runes etched into its surface")
+        elif 'Instant' in card_type:
+            base_desc = "powerful magical sigil"
+            spell_details.append("with explosive energy")
+            spell_details.append("surrounded by arcane symbols")
+        elif 'Sorcery' in card_type:
+            base_desc = "complex magical ritual"
+            spell_details.append("with swirling magical energies")
+            spell_details.append("surrounded by floating runes")
         else:
-            style = (
-                f"Professional illustration of {name}, a {color_str} magical object with "
-                f"a {rarity_style}. Create a detailed magical item that embodies: {text}. "
-                f"The object should perfectly represent '{name}'{mood_desc}. "
-                f"Incorporate {color_visual_desc} into its design. "
-                f"The object's form should suggest its purpose: {', '.join(ability_visuals) if ability_visuals else text}. "
-                "Object must be floating in empty space, centered against a pure white background. "
-                "NO effects, NO patterns, NO decorative elements. "
-                "Focus on making the object's magical nature and purpose immediately recognizable "
-                "through its form and details alone."
-            )
-    
-    return style
+            base_desc = "magical object"
+            spell_details.append("with mysterious energies")
+        
+        # Add ability-based details
+        if ability_visuals:
+            spell_details.extend(ability_visuals[:2])
+        
+        # Add name-derived themes
+        spell_details.extend(name_themes)
+        
+        # Combine all details, removing duplicates while preserving order
+        all_details = []
+        seen = set()
+        for detail in spell_details:
+            if detail.lower() not in seen:
+                all_details.append(detail)
+                seen.add(detail.lower())
+        
+        details_str = ', '.join(filter(None, all_details))
+        
+        # Build final prompt with specific magical focus
+        return f"Detailed fantasy concept art of a {base_desc}, {details_str}, dramatic lighting, intricate details, cinematic composition, professional quality. White background."

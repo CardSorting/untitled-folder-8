@@ -61,10 +61,20 @@ def standardize_card_data(card_data: Dict[str, Any]) -> Dict[str, Any]:
         if old_key in card_data:
             card_data[new_key] = card_data.pop(old_key)
     
+    # Handle text field that might be a list of ability objects
+    if 'text' in card_data and isinstance(card_data['text'], list):
+        # Convert list of ability objects to string
+        text_parts = []
+        for ability in card_data['text']:
+            if isinstance(ability, dict) and 'Text' in ability:
+                text_parts.append(ability['Text'])
+        card_data['text'] = '\n'.join(text_parts) if text_parts else ''
+    
     # Truncate fields to specified limits
     for field, limit in LIMITS.items():
         if field in card_data and card_data[field]:
-            card_data[field] = card_data[field][:limit]
+            if isinstance(card_data[field], str):  # Only truncate string fields
+                card_data[field] = card_data[field][:limit]
     
     # Ensure required fields have default values
     defaults = {
@@ -98,12 +108,47 @@ def validate_card_data(card_data: Dict[str, Any]) -> Dict[str, Any]:
         if not card_data.get('type'):
             card_data['type'] = 'Creature'
         
+        # Extract creature types
+        creature_types = []
+        if 'type' in card_data:
+            type_parts = card_data['type'].split('—')
+            if len(type_parts) > 1:
+                creature_types = [t.strip() for t in type_parts[1].split()]
+        
         # Validate power and toughness for creatures
         if 'Creature' in card_data.get('type', ''):
+            # Default power/toughness based on creature type
+            default_power = '2'
+            default_toughness = '2'
+            
+            # Adjust based on creature type
+            if any(t in ['Rat', 'Bird', 'Cat'] for t in creature_types):
+                default_power = '1'
+                default_toughness = '1'
+            elif any(t in ['Dragon', 'Demon', 'Angel'] for t in creature_types):
+                default_power = '4'
+                default_toughness = '4'
+            elif any(t in ['Giant', 'Wurm'] for t in creature_types):
+                default_power = '5'
+                default_toughness = '5'
+            
             if not card_data.get('power'):
-                card_data['power'] = '1'
+                card_data['power'] = default_power
             if not card_data.get('toughness'):
-                card_data['toughness'] = '1'
+                card_data['toughness'] = default_toughness
+            
+            # Ensure text field reflects creature identity
+            if not card_data.get('text'):
+                # Generate basic ability based on creature type
+                abilities = []
+                if any(t in ['Dragon', 'Angel', 'Bird'] for t in creature_types):
+                    abilities.append('Flying')
+                if any(t in ['Rat', 'Cat'] for t in creature_types):
+                    abilities.append('Deathtouch')
+                if any(t in ['Giant', 'Wurm'] for t in creature_types):
+                    abilities.append('Trample')
+                
+                card_data['text'] = ' '.join(abilities) if abilities else ''
         
         # Validate rarity
         if not card_data.get('rarity'):

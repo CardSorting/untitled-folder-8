@@ -19,67 +19,70 @@ class UserModel(Base):
     claimed_cards = relationship("UnclaimedCard", back_populates="claimed_by")
     credit_transactions = relationship("CreditTransaction", back_populates="user")
     
-    async def has_enough_credits(self, amount: int) -> bool:
+    def has_enough_credits(self, amount: int) -> bool:
         """Check if user has enough credits."""
         return self.credits >= amount
     
-    async def add_credits(self, db: "Session", amount: int, description: str, transaction_type: str):
-        """Add credits to user account."""
+    def add_credits(self, db: "Session", amount: int, description: str, transaction_type: str) -> bool:
+        """
+        Add credits to user account.
+        Returns True if successful.
+        """
         from models import CreditTransaction
         
-        self.credits += amount
-        transaction = CreditTransaction(
-            user_id=self.firebase_id,
-            amount=amount,
-            description=description,
-            transaction_type=transaction_type
-        )
-        db.add(transaction)
-        
-        # Broadcast credit update via WebSocket
-        await websocket_manager.broadcast_to_user(
-            self.firebase_id,
-            {
-                "type": "credit_update",
-                "credits": self.credits,
-                "transaction": {
-                    "amount": amount,
-                    "description": description,
-                    "type": transaction_type
-                }
-            }
-        )
+        try:
+            self.credits += amount
+            transaction = CreditTransaction(
+                user_id=self.firebase_id,
+                amount=amount,
+                description=description,
+                transaction_type=transaction_type
+            )
+            db.add(transaction)
+            return True
+        except Exception:
+            return False
     
-    async def spend_credits(self, db: "Session", amount: int, description: str, transaction_type: str) -> bool:
+    def spend_credits(self, db: "Session", amount: int, description: str, transaction_type: str) -> bool:
         """
         Attempt to spend credits. Returns True if successful.
         """
-        if not await self.has_enough_credits(amount):
+        if not self.has_enough_credits(amount):
             return False
             
         from models import CreditTransaction
         
-        self.credits -= amount
-        transaction = CreditTransaction(
-            user_id=self.firebase_id,
-            amount=-amount,  # Negative amount for spending
-            description=description,
-            transaction_type=transaction_type
-        )
-        db.add(transaction)
-        
-        # Broadcast credit update via WebSocket
-        await websocket_manager.broadcast_to_user(
-            self.firebase_id,
-            {
-                "type": "credit_update",
-                "credits": self.credits,
-                "transaction": {
-                    "amount": -amount,
-                    "description": description,
-                    "type": transaction_type
+        try:
+            self.credits -= amount
+            transaction = CreditTransaction(
+                user_id=self.firebase_id,
+                amount=-amount,  # Negative amount for spending
+                description=description,
+                transaction_type=transaction_type
+            )
+            db.add(transaction)
+            return True
+        except Exception:
+            return False
+
+    async def notify_credit_update(self, amount: int, description: str, transaction_type: str):
+        """
+        Send WebSocket notification about credit update.
+        This is separate from the credit operations to maintain async/sync separation.
+        """
+        try:
+            await websocket_manager.broadcast_to_user(
+                self.firebase_id,
+                {
+                    "type": "credit_update",
+                    "credits": self.credits,
+                    "transaction": {
+                        "amount": amount,
+                        "description": description,
+                        "type": transaction_type
+                    }
                 }
-            }
-        )
-        
-        return True
+            )
+        except Exception:
+            # WebSocket notification failure shouldn't affect the credit operation
+            pass

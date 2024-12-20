@@ -6,6 +6,8 @@ from collections import deque
 from dataclasses import dataclass
 import uuid
 from websocket_manager import websocket_manager
+from functools import partial
+from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -103,6 +105,7 @@ class TaskManager:
         }
         self._running = False
         self._workers = {}
+        self._thread_pool = ThreadPoolExecutor(max_workers=4)
     
     async def start(self):
         """Start the task manager."""
@@ -121,6 +124,7 @@ class TaskManager:
         for worker in self._workers.values():
             worker.cancel()
         self._workers.clear()
+        self._thread_pool.shutdown(wait=True)
     
     async def submit_task(
         self,
@@ -179,7 +183,28 @@ class TaskManager:
                 try:
                     if task.type == "open_pack":
                         from pack_handler import process_pack_opening
-                        result = await process_pack_opening(task.user_id, task.data)
+                        # Run synchronous function in thread pool
+                        loop = asyncio.get_running_loop()
+                        result = await loop.run_in_executor(
+                            self._thread_pool,
+                            partial(process_pack_opening, task.user_id, task.data)
+                        )
+                        
+                        # Send credit update notification
+                        from user_models import UserModel
+                        from database import SessionLocal
+                        db = SessionLocal()
+                        try:
+                            user = db.query(UserModel).filter(UserModel.firebase_id == task.user_id).first()
+                            if user:
+                                await user.notify_credit_update(
+                                    -result["cost"],
+                                    "Opened a booster pack",
+                                    "pack_opening"
+                                )
+                        finally:
+                            db.close()
+                        
                         await queue.mark_complete(task.id, result)
                     else:
                         await queue.mark_failed(
