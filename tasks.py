@@ -312,7 +312,7 @@ def create_card_task(self, user_id: str, name: str) -> Dict[str, Any]:
     db = SessionLocal()
     try:
         # Generate card with provided name
-        card_data = generate_card(name=name)
+        card_data = asyncio.run(generate_card(name=name))
         
         # Add to user's collection
         card_model = CardModel(

@@ -26,6 +26,11 @@ celery_app.conf.update(
         'ssl_cert_reqs': ssl.CERT_NONE,
         'ssl_ca_certs': None
     },
+    broker_use_ssl={
+        'ssl_cert_reqs': ssl.CERT_NONE,
+        'ssl_ca_certs': None,
+        'cert_reqs': ssl.CERT_NONE
+    },
     task_routes={
         'tasks.create_card_task': {'queue': 'card_creation'},
         'tasks.process_pack_opening': {'queue': 'pack_opening'},
