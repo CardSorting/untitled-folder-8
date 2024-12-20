@@ -1,14 +1,15 @@
-from database import engine
-from models import Base
-from models import CardModel, UnclaimedCard, CreditTransaction
+from database import engine, Base
+from models import CardModel, UnclaimedCard
 from user_models import UserModel
 
 def reset_database():
-    """Drop all tables and recreate them with the latest schema."""
+    """Drop all tables and recreate them."""
     print("Dropping all tables...")
     Base.metadata.drop_all(bind=engine)
-    print("Creating all tables with latest schema...")
+    
+    print("Creating new tables...")
     Base.metadata.create_all(bind=engine)
+    
     print("Database reset complete!")
 
 if __name__ == "__main__":

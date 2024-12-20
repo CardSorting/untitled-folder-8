@@ -35,20 +35,3 @@ class UnclaimedCard(Base):
     is_claimed = Column(Boolean, default=False)
     claimed_by_user_id = Column(String, ForeignKey('users.firebase_id'), nullable=True)
     claimed_at = Column(DateTime, nullable=True)
-    
-    # Relationship to user who claimed it
-    claimed_by = relationship("UserModel", back_populates="claimed_cards")
-
-class CreditTransaction(Base):
-    """Model for tracking credit transactions."""
-    __tablename__ = "credit_transactions"
-    
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(String, ForeignKey('users.firebase_id'))
-    amount = Column(Integer)  # Positive for credits added, negative for credits spent
-    description = Column(String)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    transaction_type = Column(String)  # e.g., "pack_opening", "admin_grant", "daily_bonus"
-    
-    # Relationship to user
-    user = relationship("UserModel", back_populates="credit_transactions")
