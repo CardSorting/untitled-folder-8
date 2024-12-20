@@ -329,6 +329,47 @@ async def get_credit_history(
         logger.error(f"Error getting credit history: {e}")
         raise HTTPException(status_code=500, detail="Error getting credit history")
 
+@app.get("/credits/can-claim")
+async def can_claim_daily_credits(
+    current_user: UserModel = Depends(get_current_user)
+):
+    """Check if user can claim daily credits."""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    try:
+        can_claim = credit_manager.can_claim_daily_credits(current_user.firebase_id)
+        return JSONResponse(
+            status_code=200,
+            content={
+                "can_claim": can_claim
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error checking claim status: {e}")
+        raise HTTPException(status_code=500, detail="Error checking claim status")
+
+@app.post("/credits/claim-daily")
+async def claim_daily_credits(
+    current_user: UserModel = Depends(get_current_user)
+):
+    """Claim daily credits."""
+    if not current_user:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    try:
+        task = claim_daily_credits.delay(current_user.firebase_id)
+        return JSONResponse(
+            status_code=202,
+            content={
+                "message": "Daily credit claim task started",
+                "task_id": task.id
+            }
+        )
+    except Exception as e:
+        logger.error(f"Error starting daily credit claim: {e}")
+        raise HTTPException(status_code=500, detail="Error claiming daily credits")
+
 @app.post("/credits/add")
 async def add_credits(
     amount: int,

@@ -31,6 +31,82 @@
             }
         }
 
+        async function claimDailyCredits() {
+            try {
+                const token = localStorage.getItem('firebaseToken');
+                if (!token) {
+                    window.location.href = '/auth';
+                    return;
+                }
+
+                const response = await fetch('/credits/claim-daily', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.detail || 'Failed to claim daily credits');
+                }
+
+                const data = await response.json();
+                console.log('Daily claim task started:', data.task_id);
+
+                // Check task status
+                const result = await checkTaskStatus(data.task_id);
+                if (result.success) {
+                    // Show success message
+                    const message = document.createElement('div');
+                    message.className = 'fixed top-4 right-4 bg-green-500 text-white px-4 py-2 rounded shadow-lg';
+                    message.textContent = result.message;
+                    document.body.appendChild(message);
+                    setTimeout(() => message.remove(), 3000);
+
+                    // Update credit display and claim button
+                    if (result.new_balance !== undefined) {
+                        updateCreditDisplay(result.new_balance);
+                    }
+                    updateClaimButton();
+                } else {
+                    throw new Error(result.message || 'Failed to claim daily credits');
+                }
+            } catch (error) {
+                console.error('Error claiming daily credits:', error);
+                // Show error message
+                const message = document.createElement('div');
+                message.className = 'fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded shadow-lg';
+                message.textContent = error.message;
+                document.body.appendChild(message);
+                setTimeout(() => message.remove(), 3000);
+            }
+        }
+
+        async function checkTaskStatus(taskId) {
+            const token = localStorage.getItem('firebaseToken');
+            const response = await fetch(`/credits/task-status/${taskId}`, {
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Failed to check task status');
+            }
+
+            const data = await response.json();
+            if (data.status === 'completed') {
+                return data.result;
+            } else if (data.status === 'failed') {
+                throw new Error(data.error || 'Task failed');
+            } else {
+                // Task still pending, wait and try again
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                return checkTaskStatus(taskId);
+            }
+        }
+
         async function generateCard(rarity = null) {
             try {
                 const formData = new FormData();
@@ -101,6 +177,51 @@
             }
         }
 
+        async function checkClaimStatus() {
+            try {
+                const token = localStorage.getItem('firebaseToken');
+                if (!token) return;
+
+                const response = await fetch('/credits/can-claim', {
+                    headers: {
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Failed to check claim status');
+                }
+
+                const data = await response.json();
+                const claimButton = document.getElementById('claimButton');
+                const claimText = claimButton.querySelector('.claim-text');
+                
+                if (data.can_claim) {
+                    claimButton.disabled = false;
+                    claimText.textContent = 'Claim Daily';
+                    claimButton.classList.remove('bg-gray-500');
+                    claimButton.classList.add('bg-green-500', 'hover:bg-green-600');
+                } else {
+                    claimButton.disabled = true;
+                    claimText.textContent = 'Come back tomorrow!';
+                    claimButton.classList.remove('bg-green-500', 'hover:bg-green-600');
+                    claimButton.classList.add('bg-gray-500');
+                }
+            } catch (error) {
+                console.error('Error checking claim status:', error);
+            }
+        }
+
+        // Update claim button after successful claim
+        function updateClaimButton() {
+            const claimButton = document.getElementById('claimButton');
+            const claimText = claimButton.querySelector('.claim-text');
+            claimButton.disabled = true;
+            claimText.textContent = 'Come back tomorrow!';
+            claimButton.classList.remove('bg-green-500', 'hover:bg-green-600');
+            claimButton.classList.add('bg-gray-500');
+        }
+
         // Protected routes that require authentication
         const protectedRoutes = ['/cards', '/packs'];
 
@@ -113,8 +234,10 @@
                 
                 if (user) {
                     // User is signed in
-                    user.getIdToken().then(function(token) {
+                    user.getIdToken().then(async function(token) {
                         localStorage.setItem('firebaseToken', token);
+                        // Check if user can claim daily credits
+                        await checkClaimStatus();
                     });
                 } else {
                     // User is signed out
@@ -135,10 +258,20 @@
         <div class="container mx-auto flex justify-between items-center">
             <a href="/" class="text-2xl font-bold md:text-3xl lg:text-4xl">Magic Card Generator</a>
             <div class="flex items-center space-x-4 md:space-x-6 lg:space-x-8">
-                <!-- Credits display -->
-                <div class="auth-required hidden">
-                    <span class="text-sm">Credits: </span>
-                    <span id="credit-balance" class="font-bold">0</span>
+                <!-- Credits display and daily claim -->
+                <div class="auth-required hidden flex items-center space-x-2">
+                    <div>
+                        <span class="text-sm">Credits: </span>
+                        <span id="credit-balance" class="font-bold">0</span>
+                    </div>
+                    <button
+                        id="claimButton"
+                        onclick="claimDailyCredits()"
+                        class="bg-green-500 hover:bg-green-600 text-white text-sm px-3 py-1 rounded transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled
+                    >
+                        <span class="claim-text">Check Claim</span>
+                    </button>
                 </div>
                 <!-- Auth-required links -->
                 <a href="/packs" class="hover:text-blue-200 auth-required hidden">Buy Packs</a>

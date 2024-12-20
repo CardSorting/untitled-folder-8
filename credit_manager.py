@@ -15,6 +15,10 @@ class CreditManager:
         """Get Redis key for user's transaction history."""
         return f"credits:transactions:{user_id}"
         
+    def _get_last_claim_key(self, user_id: str) -> str:
+        """Get Redis key for user's last daily claim."""
+        return f"credits:last_claim:{user_id}"
+        
     def get_balance(self, user_id: str) -> int:
         """Get user's current credit balance."""
         balance = self.redis.get(self._get_user_key(user_id))
@@ -104,6 +108,73 @@ class CreditManager:
                 return False
             finally:
                 pipe.reset()
+    
+    def can_claim_daily_credits(self, user_id: str) -> bool:
+        """Check if user can claim daily credits."""
+        last_claim_key = self._get_last_claim_key(user_id)
+        last_claim = self.redis.get(last_claim_key)
+        
+        if not last_claim:
+            return True
+            
+        last_claim_date = datetime.fromisoformat(last_claim.decode('utf-8'))
+        current_date = datetime.utcnow()
+        
+        # Check if last claim was on a different UTC day
+        return (
+            last_claim_date.year != current_date.year or
+            last_claim_date.month != current_date.month or
+            last_claim_date.day != current_date.day
+        )
+    
+    def claim_daily_credits(self, user_id: str) -> Dict[str, Any]:
+        """Claim daily credits if eligible."""
+        if not self.can_claim_daily_credits(user_id):
+            return {
+                "success": False,
+                "message": "Daily credits already claimed",
+                "next_claim": "Come back tomorrow!"
+            }
+        
+        DAILY_CREDITS = 100  # Enough for one pack
+        
+        # Add credits and record claim time atomically
+        with self.redis.pipeline() as pipe:
+            try:
+                # Start transaction
+                pipe.multi()
+                
+                # Add credits
+                success = self.add_credits(
+                    user_id=user_id,
+                    amount=DAILY_CREDITS,
+                    description="Daily credit claim",
+                    transaction_type="daily_claim"
+                )
+                
+                if not success:
+                    raise Exception("Failed to add credits")
+                
+                # Record claim time
+                claim_time = datetime.utcnow().isoformat()
+                pipe.set(self._get_last_claim_key(user_id), claim_time)
+                
+                # Execute transaction
+                pipe.execute()
+                
+                return {
+                    "success": True,
+                    "message": f"Claimed {DAILY_CREDITS} daily credits",
+                    "amount": DAILY_CREDITS,
+                    "new_balance": self.get_balance(user_id)
+                }
+                
+            except Exception as e:
+                return {
+                    "success": False,
+                    "message": "Failed to claim daily credits",
+                    "error": str(e)
+                }
     
     def get_transaction_history(self, user_id: str, page: int = 1, per_page: int = 10) -> Dict[str, Any]:
         """Get paginated transaction history for a user."""

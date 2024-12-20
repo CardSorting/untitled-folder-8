@@ -210,6 +210,22 @@ def get_credit_balance(self, user_id: str) -> Dict[str, Any]:
         raise self.retry(exc=e, countdown=5)
 
 @shared_task(bind=True, max_retries=3)
+def claim_daily_credits(self, user_id: str) -> Dict[str, Any]:
+    """
+    Celery task to process daily credit claim.
+    """
+    try:
+        result = credit_manager.claim_daily_credits(user_id)
+        if result["success"]:
+            logger.info(f"Daily credits claimed for user {user_id}: {result['amount']} credits")
+        else:
+            logger.warning(f"Daily credit claim failed for user {user_id}: {result['message']}")
+        return result
+    except Exception as e:
+        logger.error(f"Error processing daily credit claim for user {user_id}: {e}")
+        raise self.retry(exc=e, countdown=5)
+
+@shared_task(bind=True, max_retries=3)
 def spend_credits(self, user_id: str, amount: int, description: str, transaction_type: str) -> bool:
     """
     Celery task to handle credit spending using Redis.
