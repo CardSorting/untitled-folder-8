@@ -386,6 +386,13 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
         # Connect to WebSocket manager
         await websocket_manager.connect(websocket, user_id)
         
+        # Send initial credit balance
+        balance = credit_manager.get_balance(user_id)
+        await websocket.send_json({
+            'type': 'credit_update',
+            'credits': balance
+        })
+        
         # Keep connection alive and handle incoming messages
         while True:
             message = await websocket.receive_json()

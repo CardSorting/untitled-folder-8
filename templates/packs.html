@@ -471,6 +471,7 @@ function connectWebSocket() {
                 ws.send(JSON.stringify({ type: 'ping' }));
             }
         }, 30000);
+
     };
     
     ws.onmessage = (event) => {
@@ -480,6 +481,8 @@ function connectWebSocket() {
             case 'task_complete':
                 if (data.result) {
                     displayPackResults(data.result);
+                    // Request credit update after pack opening
+                    startCreditBalanceTask();
                 }
                 break;
             
@@ -490,6 +493,10 @@ function connectWebSocket() {
             
             case 'credit_update':
                 updateCreditDisplay(data.credits);
+                break;
+
+            case 'pong':
+                // Just keep the connection alive, no need to request balance
                 break;
         }
     };
@@ -509,6 +516,7 @@ function connectWebSocket() {
 
 // Connect WebSocket when page loads
 connectWebSocket();
+
 
 function updateCreditDisplay(credits) {
     // Update credit display in the UI
@@ -620,6 +628,11 @@ function displayPackResults(result) {
     content.classList.add('hidden');
     resultDiv.classList.remove('hidden');
     
+    // Update credit display if provided in result
+    if (result.credits_remaining !== undefined) {
+        updateCreditDisplay(result.credits_remaining);
+    }
+    
     showToast('Pack opened successfully!', false);
 }
 
@@ -628,28 +641,5 @@ function closePackModal() {
     modal.classList.add('hidden');
 }
 
-// Fetch initial credit balance
-async function fetchCreditBalance() {
-    try {
-        const token = localStorage.getItem('firebaseToken');
-        if (!token) return;
-        
-        const response = await fetch('/credits/balance', {
-            headers: {
-                'Authorization': `Bearer ${token}`
-            }
-        });
-        
-        if (response.ok) {
-            const data = await response.json();
-            updateCreditDisplay(data.credits);
-        }
-    } catch (error) {
-        console.error('Error fetching credit balance:', error);
-    }
-}
-
-// Fetch initial credit balance when page loads
-fetchCreditBalance();
 </script>
 {% endblock %}

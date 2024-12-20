@@ -23,102 +23,12 @@
         }
     </style>
     <script>
-        let currentTaskId = null;
-        let checkTaskInterval = null;
-
         // Update credit display in the UI
         function updateCreditDisplay(credits) {
             const creditBalance = document.getElementById('credit-balance');
             if (creditBalance) {
                 creditBalance.textContent = credits;
             }
-        }
-
-        // Start a new credit balance task
-        async function startCreditBalanceTask() {
-            try {
-                const user = firebase.auth().currentUser;
-                if (!user) return;
-
-                // Get fresh token
-                const token = await user.getIdToken(true);
-                localStorage.setItem('firebaseToken', token);
-
-                const response = await fetch('/credits/start-balance-task', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    currentTaskId = data.task_id;
-                    checkTaskResult();
-                } else if (response.status === 401) {
-                    // Token expired or invalid, retry with fresh token
-                    setTimeout(startCreditBalanceTask, 1000);
-                }
-            } catch (error) {
-                console.error('Error starting credit balance task:', error);
-                // Retry after error
-                setTimeout(startCreditBalanceTask, 5000);
-            }
-        }
-
-        // Check task result
-        async function checkTaskResult() {
-            if (!currentTaskId) return;
-
-            try {
-                const user = firebase.auth().currentUser;
-                if (!user) return;
-
-                // Get fresh token
-                const token = await user.getIdToken(true);
-                localStorage.setItem('firebaseToken', token);
-
-                const response = await fetch(`/credits/task-status/${currentTaskId}`, {
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.status === 'completed') {
-                        updateCreditDisplay(data.result.credits);
-                        // Start a new task after completion
-                        startCreditBalanceTask();
-                    } else if (data.status === 'failed') {
-                        console.error('Credit balance task failed:', data.error);
-                        // Retry after failure
-                        setTimeout(startCreditBalanceTask, 5000);
-                    } else {
-                        // Check again in 1 second if still pending
-                        setTimeout(checkTaskResult, 1000);
-                    }
-                } else if (response.status === 401) {
-                    // Token expired or invalid, retry with fresh token
-                    setTimeout(startCreditBalanceTask, 1000);
-                } else {
-                    // Other errors, retry after delay
-                    setTimeout(startCreditBalanceTask, 5000);
-                }
-            } catch (error) {
-                console.error('Error checking task result:', error);
-                setTimeout(startCreditBalanceTask, 5000);
-            }
-        }
-
-        // Start monitoring credit balance
-        function startCreditMonitoring() {
-            startCreditBalanceTask();
-        }
-
-        // Stop monitoring credit balance
-        function stopCreditMonitoring() {
-            currentTaskId = null;
         }
 
         async function generateCard(rarity = null) {
@@ -184,14 +94,10 @@
                 loginButton.classList.add('hidden');
                 logoutButton.classList.remove('hidden');
                 authRequiredElements.forEach(el => el.classList.remove('hidden'));
-                // Start credit monitoring using Celery tasks
-                startCreditMonitoring();
             } else {
                 loginButton.classList.remove('hidden');
                 logoutButton.classList.add('hidden');
                 authRequiredElements.forEach(el => el.classList.add('hidden'));
-                // Stop credit monitoring
-                stopCreditMonitoring();
             }
         }
 
@@ -209,14 +115,10 @@
                     // User is signed in
                     user.getIdToken().then(function(token) {
                         localStorage.setItem('firebaseToken', token);
-                        // Start polling for credit updates
-                        startCreditPolling();
                     });
                 } else {
                     // User is signed out
                     localStorage.removeItem('firebaseToken');
-                    // Stop polling for credit updates
-                    stopCreditPolling();
                     // Only redirect to auth if trying to access protected routes
                     const currentPath = window.location.pathname;
                     if (protectedRoutes.some(route => currentPath.startsWith(route))) {
