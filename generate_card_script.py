@@ -16,9 +16,16 @@ TIMEOUT = 120.0  # 120 seconds timeout for the long card generation process
 
 async def ensure_admin_user(db: Session) -> UserModel:
     """Get the admin user and create a custom token."""
+    # First run set_admin.py if needed
     admin = db.query(UserModel).filter(UserModel.firebase_id == ADMIN_FIREBASE_ID).first()
-    if not admin:
-        raise Exception(f"Admin user with Firebase ID {ADMIN_FIREBASE_ID} not found")
+    if not admin or not admin.is_admin:
+        print("Admin user not found or not admin. Running set_admin.py...")
+        from set_admin import set_admin
+        set_admin()
+        # Refresh admin user
+        admin = db.query(UserModel).filter(UserModel.firebase_id == ADMIN_FIREBASE_ID).first()
+        if not admin or not admin.is_admin:
+            raise Exception("Failed to set up admin user")
     
     # Initialize Firebase Admin SDK if not already initialized
     try:
@@ -69,14 +76,44 @@ async def generate_card():
         # Make request to generate card with ID token
         async with httpx.AsyncClient(timeout=TIMEOUT) as client:  # Long timeout for card generation
             try:
-                response = await client.post(
-                    "http://localhost:8000/admin/generate-card",
-                    headers={"Authorization": f"Bearer {id_token}"}
-                )
-                response.raise_for_status()
-                card_data = response.json()
-                print(f"Generated card: {json.dumps(card_data, indent=2)}")
-                return card_data
+                # First verify the token works
+                print("Verifying admin access...")
+                try:
+                    verify_response = await client.get(
+                        "http://localhost:8000/credits/can-claim",
+                        headers={"Authorization": f"Bearer {id_token}"}
+                    )
+                    verify_response.raise_for_status()
+                except Exception as e:
+                    print("Error verifying token. Try running set_admin.py again.")
+                    raise
+
+                print("Admin access verified. Generating card...")
+                try:
+                    response = await client.post(
+                        "http://localhost:8000/admin/generate-card",
+                        headers={"Authorization": f"Bearer {id_token}"}
+                    )
+                    response.raise_for_status()
+                    card_data = response.json()
+                    print(f"Generated card: {json.dumps(card_data, indent=2)}")
+                    return card_data
+                except httpx.ConnectError:
+                    print("Error: Could not connect to server. Make sure the FastAPI server is running on localhost:8000")
+                    raise
+                except httpx.HTTPStatusError as e:
+                    if e.response.status_code == 404:
+                        print("Error: The /admin/generate-card endpoint was not found. Make sure you're running the latest version of the server.")
+                    elif e.response.status_code == 403:
+                        print("\nError: Admin access denied. Please:")
+                        print("1. Run 'python set_admin.py' to ensure admin privileges")
+                        print("2. Restart the FastAPI server: uvicorn main:app --reload")
+                        print("3. Try again\n")
+                    else:
+                        print(f"HTTP error during card generation: {str(e)}")
+                        if hasattr(e.response, 'text'):
+                            print(f"Response content: {e.response.text}")
+                    raise
             except httpx.HTTPError as e:
                 print(f"HTTP error during card generation: {str(e)}")
                 if hasattr(response, 'text'):

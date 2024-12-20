@@ -2,15 +2,18 @@ from typing import Dict, Any, List, Optional, Union
 import logging
 import random
 import time
+import asyncio
 from datetime import datetime
 from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
-from celery import shared_task
+from celery import shared_task, group
+import json
 
 from models import UnclaimedCard, CardModel, UserModel
 from database import SessionLocal
 from celery_config import celery_app
 from credit_manager import credit_manager
+from generate_card_script import generate_card
 
 logger = logging.getLogger(__name__)
 
@@ -253,3 +256,77 @@ def spend_credits(self, user_id: str, amount: int, description: str, transaction
     except Exception as e:
         logger.error(f"Credit transaction failed for user {user_id}: {e}")
         raise self.retry(exc=e, countdown=5)
+
+@shared_task(bind=True, max_retries=None)  # Allow unlimited retries
+def generate_card_task(self, rarity: str = None) -> Dict[str, Any]:
+    """
+    Celery task to generate a card using the API.
+    Uses exponential backoff for retries to handle rate limits.
+    """
+    try:
+        # Initialize database
+        db = SessionLocal()
+        
+        try:
+            # Generate card through API
+            card_data = asyncio.run(generate_card())
+            
+            if not card_data:
+                raise ValueError("No card data received from API")
+            
+            # Add to unclaimed pool
+            unclaimed_card = UnclaimedCard(
+                name=card_data['name'],
+                card_data=card_data,
+                image_path=card_data.get('image_path'),
+                rarity=card_data['rarity'],
+                set_name=card_data['set_name'],
+                card_number=card_data['card_number'],
+                is_claimed=False
+            )
+            db.add(unclaimed_card)
+            db.commit()
+            
+            logger.info(f"Generated {card_data['rarity']} card: {card_data['name']}")
+            return card_data
+            
+        except Exception as e:
+            db.rollback()
+            # Use exponential backoff for retries
+            countdown = min(2 ** (self.request.retries + 1), 300)  # Max 5 minutes
+            logger.warning(f"Card generation failed, retrying in {countdown}s: {str(e)}")
+            raise self.retry(exc=e, countdown=countdown)
+            
+        finally:
+            db.close()
+            
+    except Exception as e:
+        logger.error(f"Unhandled error in generate_card_task: {str(e)}")
+        raise
+
+@shared_task(bind=True)
+def generate_initial_cards_task(self, batch_config: Dict[str, int]) -> None:
+    """
+    Celery task to generate a batch of initial cards.
+    Schedules individual card generation tasks with delays to avoid rate limits.
+    """
+    try:
+        total_delay = 0
+        for rarity, count in batch_config.items():
+            logger.info(f"Scheduling {count} {rarity} cards...")
+            
+            # Schedule tasks with increasing delays to avoid rate limits
+            for i in range(count):
+                generate_card_task.apply_async(
+                    kwargs={'rarity': rarity},
+                    countdown=total_delay + (i * 2)  # Space out requests by 2 seconds each
+                )
+            
+            total_delay += count * 2  # Update total delay for next rarity
+            logger.info(f"Scheduled {count} {rarity} card generation tasks")
+        
+        logger.info(f"All card generation tasks have been scheduled with delays")
+        
+    except Exception as e:
+        logger.error(f"Error scheduling card generation tasks: {str(e)}")
+        raise

@@ -454,6 +454,43 @@ async def websocket_endpoint(websocket: WebSocket, client_id: str):
 # Add packs to protected routes
 protectedRoutes = ['/generate', '/cards', '/packs']
 
+@app.post("/admin/generate-card")
+async def generate_admin_card(
+    request: Request,
+    current_user: UserModel = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Admin endpoint to generate a single card."""
+    if not current_user or not current_user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    try:
+        # Generate card data
+        card_data = await generate_card()
+        
+        # Add to unclaimed pool
+        unclaimed_card = UnclaimedCard(
+            name=card_data['name'],
+            card_data=card_data,
+            image_path=card_data.get('image_path'),
+            rarity=card_data['rarity'],
+            set_name=card_data['set_name'],
+            card_number=card_data['card_number'],
+            is_claimed=False
+        )
+        db.add(unclaimed_card)
+        db.commit()
+        
+        return JSONResponse(
+            status_code=200,
+            content=card_data
+        )
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error generating card: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Optional: Add a health check endpoint
 @app.get("/health")
 async def health_check():
