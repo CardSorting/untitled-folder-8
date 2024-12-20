@@ -1,15 +1,14 @@
 from typing import Dict, Any, List, Optional, Union
 import logging
-import time
-import random
-from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
 from datetime import datetime
-from contextlib import contextmanager
+from sqlalchemy import and_, func
+from sqlalchemy.orm import Session
+from celery import shared_task
 
-from models import UnclaimedCard, CardModel, CreditTransaction
-from user_models import UserModel
+from models import UnclaimedCard, CardModel
 from database import SessionLocal
+from celery_config import celery_app
+from credit_manager import credit_manager
 
 logger = logging.getLogger(__name__)
 
@@ -42,35 +41,30 @@ class PackError(Exception):
     pass
 
 def get_cards_by_rarity(
-    db: Session, 
-    rarity: Union[str, List[str]], 
+    db: Session,
+    rarity: Union[str, List[str]],
     count: int,
     user_id: str,
     retries: int = 0,
     mythic_rate: Optional[float] = None
 ) -> List[UnclaimedCard]:
-    """
-    Get and claim specified number of cards of given rarity with retry logic.
-    All operations are done in a single atomic transaction.
-    """
+    """Get and claim specified number of cards of given rarity."""
     cards = []
     retry_count = 0
     claim_time = datetime.utcnow()
     
     while len(cards) < count and retry_count <= retries:
         if retry_count > 0:
-            time.sleep(PACK_CONFIG["retry_delay"])
+            celery_app.backend.sleep(PACK_CONFIG["retry_delay"])
         
-        # Apply mythic rate if specified (for rare/mythic slot)
         if mythic_rate and isinstance(rarity, list) and 'Rare' in rarity:
-            if random.uniform(0.0, 1.0) < mythic_rate:
+            if celery_app.backend.random() < mythic_rate:
                 query_rarity = ['Mythic']
             else:
                 query_rarity = ['Rare']
         else:
             query_rarity = rarity if isinstance(rarity, list) else [rarity]
             
-        # Get and claim cards in a single atomic operation
         new_cards = (
             db.query(UnclaimedCard)
             .filter(
@@ -85,7 +79,6 @@ def get_cards_by_rarity(
             .all()
         )
         
-        # Immediately mark cards as claimed
         for card in new_cards:
             card.is_claimed = True
             card.claimed_by_user_id = user_id
@@ -96,28 +89,16 @@ def get_cards_by_rarity(
         
     return cards
 
-def process_pack_opening(user_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
+@shared_task(bind=True, max_retries=3)
+def process_pack_opening(self, user_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Process a pack opening request safely with proper transaction handling.
-    
-    Args:
-        user_id: The ID of the user opening the pack
-        data: Additional data for pack opening (reserved for future use)
-        
-    Returns:
-        Dict containing the opened cards and status
-        
-    Raises:
-        PackError: If pack opening fails due to insufficient cards or credits
+    Celery task to process a pack opening request.
     """
     db = SessionLocal()
     try:
-        # Get user and validate credits in a transaction
-        user = db.query(UserModel).filter(UserModel.firebase_id == user_id).with_for_update().first()
-        if not user:
-            raise PackError(PACK_ERRORS["user_not_found"])
-            
-        if user.credits < PACK_CONFIG["cost"]:
+        # Check if user has enough credits
+        current_credits = credit_manager.get_balance(user_id)
+        if current_credits < PACK_CONFIG["cost"]:
             raise PackError(PACK_ERRORS["insufficient_credits"])
         
         # Start transaction for pack opening
@@ -158,9 +139,9 @@ def process_pack_opening(user_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         if len(pack_cards) < total_expected:
             raise PackError(f"{PACK_ERRORS['insufficient_cards']} (got {len(pack_cards)}, need {total_expected})")
         
-        # Deduct credits and record transaction
-        if not user.spend_credits(
-            db=db,
+        # Deduct credits using Redis credit manager
+        if not credit_manager.spend_credits(
+            user_id=user_id,
             amount=PACK_CONFIG["cost"],
             description="Opened a booster pack",
             transaction_type="pack_opening"
@@ -196,22 +177,41 @@ def process_pack_opening(user_id: str, data: Dict[str, Any]) -> Dict[str, Any]:
         return {
             "message": "Pack opened successfully",
             "cards": claimed_cards,
-            "credits_remaining": user.credits
+            "credits_remaining": credit_manager.get_balance(user_id)
         }
     
     except PackError as e:
         db.rollback()
         logger.warning(f"Pack opening failed for user {user_id}: {str(e)}")
-        raise
+        raise self.retry(exc=e, countdown=5)
     
-    except PackError:
-        db.rollback()
-        raise
     except Exception as e:
         db.rollback()
         logger.error(f"Unexpected error processing pack opening for user {user_id}: {e}")
         logger.exception("Pack opening error details:")
-        raise PackError(f"Error opening pack: {str(e)}")
+        raise self.retry(exc=e, countdown=5)
     
     finally:
         db.close()
+
+@shared_task(bind=True, max_retries=3)
+def spend_credits(self, user_id: str, amount: int, description: str, transaction_type: str) -> bool:
+    """
+    Celery task to handle credit spending using Redis.
+    """
+    try:
+        success = credit_manager.spend_credits(
+            user_id=user_id,
+            amount=amount,
+            description=description,
+            transaction_type=transaction_type
+        )
+        
+        if not success:
+            raise ValueError("Credit transaction failed")
+            
+        return True
+        
+    except Exception as e:
+        logger.error(f"Credit transaction failed for user {user_id}: {e}")
+        raise self.retry(exc=e, countdown=5)

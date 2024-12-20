@@ -444,16 +444,34 @@
 </div>
 
 <script>
-let ws = null;
+ws = null;
 
 function connectWebSocket() {
     const token = localStorage.getItem('firebaseToken');
     if (!token) return;
 
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws?token=${token}`;
+    const wsUrl = `${protocol}//${window.location.host}/ws/client-${Date.now()}`;
     
+    if (ws) {
+        ws.close();
+    }
     ws = new WebSocket(wsUrl);
+    
+    ws.onopen = () => {
+        // Send authentication message once connected
+        ws.send(JSON.stringify({
+            type: 'auth',
+            token: token
+        }));
+        
+        // Set up keep-alive ping every 30 seconds
+        setInterval(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ type: 'ping' }));
+            }
+        }, 30000);
+    };
     
     ws.onmessage = (event) => {
         const data = JSON.parse(event.data);
@@ -484,6 +502,8 @@ function connectWebSocket() {
     ws.onerror = (error) => {
         console.error('WebSocket error:', error);
         showToast('Connection error. Retrying...');
+        // Close the connection to trigger reconnect
+        ws.close();
     };
 }
 
@@ -552,7 +572,8 @@ async function openPack() {
 
         if (!response.ok) {
             const error = await response.json();
-            throw new Error(error.detail || 'Failed to open pack');
+            const errorDetail = error.detail || await error.json().then(data => data.detail) || 'Failed to open pack';
+            throw new Error(errorDetail);
         }
 
         // Task submitted successfully, wait for WebSocket updates
